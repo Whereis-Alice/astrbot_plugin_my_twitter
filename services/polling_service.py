@@ -62,21 +62,23 @@ class PollingService:
         """发送有界缓存；失败的批次已经消费，不会留到下轮补发。"""
         if not getattr(self.delivery, "collective_enabled", False):
             return
-        if not self.delivery.has_collected and not self.has_pending_collective:
+        if not bool(getattr(self.delivery, "has_collected", False)) and not self.has_pending_collective:
             return
         authors = tuple(self._pending_collective_cursors)
         self._pending_collective_cursors.clear()
         self._pending_collective_tweet_ids.clear()
         try:
             result = await self.delivery.flush_collected()
-            for username in result.failed_authors:
+            for username in getattr(result, "failed_authors", ()):
                 self.require_resync(username)
                 logger.warning(f"@{username} 集体推送失败，本批次不重试，恢复后先同步")
-            await self._save_partial_history(result.recent_deliveries)
+            await self._save_partial_history(tuple(getattr(result, "recent_deliveries", ())))
         except Exception as exc:
             for username in authors:
                 self.require_resync(username)
-            self.delivery.clear_collected()
+            clear_collected = getattr(self.delivery, "clear_collected", None)
+            if callable(clear_collected):
+                clear_collected()
             logger.error(f"集体推送失败，本批次不重试: {exc}")
 
     @staticmethod
@@ -98,7 +100,9 @@ class PollingService:
             return
         results: list[bool] = []
         translation_cycle = TranslationCycleState()
-        self.delivery.begin_cycle()
+        begin_cycle = getattr(self.delivery, "begin_cycle", None)
+        if callable(begin_cycle):
+            begin_cycle()
         try:
             for username, info in subscribe_list.items():
                 results.append(await self.check_user(username, info, cycle=translation_cycle))
@@ -112,7 +116,9 @@ class PollingService:
                 await asyncio.sleep(3)
             await self.flush_pending_collective()
         finally:
-            self.delivery.end_cycle()
+            end_cycle = getattr(self.delivery, "end_cycle", None)
+            if callable(end_cycle):
+                end_cycle()
 
         if translation_cycle.skipped:
             logger.info(f"本轮因翻译服务连续失败，{translation_cycle.skipped} 条推文使用原文")
