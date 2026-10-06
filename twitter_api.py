@@ -46,7 +46,7 @@ NITTER_REQUEST_HEADERS = {
 }
 FXTWITTER_REQUEST_HEADERS = {
     "User-Agent": (
-        "AstrBot-X-Sentinel/1.0"
+        "AstrBot-My-Twitter/1.0.1"
     ),
     "Accept": "application/json",
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",

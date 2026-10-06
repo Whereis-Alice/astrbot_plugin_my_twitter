@@ -1,9 +1,9 @@
-name: astrbot_plugin_x_sentinel
-display_name: X 哨兵
+name: astrbot_plugin_my_twitter
+display_name: 我的推特
 desc: X/Twitter 订阅推送，恢复防刷屏、视频与动图、原插件数据继承及可视化管理
-version: v1.0.0
+version: v1.0.1
 author: Whereis-Alice
-repo: https://github.com/Whereis-Alice/astrbot_plugin_x_sentinel
+repo: https://github.com/Whereis-Alice/astrbot_plugin_my_twitter
 support_platforms:
   - aiocqhttp
 astrbot_version: ">=4.16,<5"

@@ -180,7 +180,8 @@ def _load_main_module():
     spec.loader.exec_module(module)
     async def no_legacy(_self, _key, default):
         return default
-    module.XSentinelPlugin._read_legacy_kv = no_legacy
+    module.MyTwitterPlugin._read_legacy_kv = no_legacy
+    module.MyTwitterPlugin._read_previous_kv = no_legacy
     return module
 
 
@@ -206,13 +207,13 @@ def subscription_list_query(plugin_module):
         original = copy.deepcopy(store)
 
         async def get_kv(key, default):
-            assert key == "x_sentinel_subs"
+            assert key == "my_twitter_subs"
             return store
 
         async def put_kv(*_args):
             pytest.fail("查询列表不得写入 KV")
 
-        plugin = plugin_module.XSentinelPlugin.__new__(plugin_module.XSentinelPlugin)
+        plugin = plugin_module.MyTwitterPlugin.__new__(plugin_module.MyTwitterPlugin)
         plugin.subscription_service = plugin_module.SubscriptionService(
             get_kv, put_kv, object(), lambda: False
         )
@@ -247,7 +248,7 @@ async def test_subscription_list_forward_is_complete(subscription_list_query, co
     for index, node in enumerate(nodes, 1):
         assert isinstance(node, Node)
         assert node.uin == "123456789"
-        assert node.name == "X哨兵订阅列表"
+        assert node.name == "推特订阅列表"
         assert len(node.content) == 1
         assert isinstance(node.content[0], Plain)
         text = node.content[0].text
@@ -317,7 +318,7 @@ async def test_fxtwitter_initialization_skips_nitter(plugin_module):
             "twitter_nitter_url": "https://must-not-be-used.example",
         }
     }
-    plugin = plugin_module.XSentinelPlugin(object(), config)
+    plugin = plugin_module.MyTwitterPlugin(object(), config)
     plugin._poll_tweets = _wait_forever
 
     assert plugin.website_list == []
@@ -335,7 +336,7 @@ async def test_fxtwitter_initialization_skips_nitter(plugin_module):
 
 
 def test_fxtwitter_readiness_stays_in_sync_with_api(plugin_module):
-    plugin = plugin_module.XSentinelPlugin(
+    plugin = plugin_module.MyTwitterPlugin(
         object(),
         {"basic": {"twitter_data_provider": "fxtwitter"}},
     )
@@ -365,7 +366,7 @@ async def test_fxtwitter_initialization_failure_keeps_recovery_task(
         "check_fxtwitter_available",
         unavailable,
     )
-    plugin = plugin_module.XSentinelPlugin(
+    plugin = plugin_module.MyTwitterPlugin(
         object(),
         {"basic": {"twitter_data_provider": "fxtwitter"}},
     )
@@ -398,7 +399,7 @@ async def test_fxtwitter_health_exception_keeps_recovery_task(
         "check_fxtwitter_available",
         unavailable,
     )
-    plugin = plugin_module.XSentinelPlugin(
+    plugin = plugin_module.MyTwitterPlugin(
         object(),
         {"basic": {"twitter_data_provider": "fxtwitter"}},
     )
@@ -418,7 +419,7 @@ async def test_fxtwitter_health_exception_keeps_recovery_task(
 
 @pytest.mark.asyncio
 async def test_fxtwitter_polling_retries_until_recovered(plugin_module):
-    plugin = plugin_module.XSentinelPlugin(
+    plugin = plugin_module.MyTwitterPlugin(
         object(),
         {"basic": {"twitter_data_provider": "fxtwitter"}},
     )
@@ -458,7 +459,7 @@ async def test_fxtwitter_polling_retries_until_recovered(plugin_module):
 
 @pytest.mark.asyncio
 async def test_nitter_default_preserves_original_initialization(plugin_module):
-    plugin = plugin_module.XSentinelPlugin(object(), {})
+    plugin = plugin_module.MyTwitterPlugin(object(), {})
     plugin._poll_tweets = _wait_forever
 
     assert plugin.data_provider == "nitter"
@@ -489,7 +490,7 @@ async def test_nitter_initialization_failure_keeps_recovery_task(
         "check_website_available",
         unavailable,
     )
-    plugin = plugin_module.XSentinelPlugin(object(), {})
+    plugin = plugin_module.MyTwitterPlugin(object(), {})
     plugin._poll_tweets = _wait_forever
 
     await plugin.initialize()
@@ -505,9 +506,9 @@ async def test_nitter_initialization_failure_keeps_recovery_task(
 
 
 def test_flat_and_grouped_provider_config_are_compatible(plugin_module):
-    assert plugin_module.XSentinelWebUIController is None
+    assert plugin_module.MyTwitterWebUIController is None
 
-    flat = plugin_module.XSentinelPlugin(
+    flat = plugin_module.MyTwitterPlugin(
         object(),
         {
             "twitter_data_provider": "fxtwitter",
@@ -516,7 +517,7 @@ def test_flat_and_grouped_provider_config_are_compatible(plugin_module):
             "twitter_link_recognition_enabled": False,
         },
     )
-    grouped = plugin_module.XSentinelPlugin(
+    grouped = plugin_module.MyTwitterPlugin(
         object(),
         {
             "basic": {
@@ -539,7 +540,7 @@ def test_flat_and_grouped_provider_config_are_compatible(plugin_module):
     assert grouped.poll_max_tweets_per_user == 9
     assert grouped.link_recognition_mode == "command"
 
-    defaulted = plugin_module.XSentinelPlugin(object(), {})
+    defaulted = plugin_module.MyTwitterPlugin(object(), {})
     assert defaulted.poll_max_tweets_per_user == 1
     assert defaulted.link_recognition_mode == "auto"
 
@@ -552,7 +553,7 @@ def test_flat_and_grouped_provider_config_are_compatible(plugin_module):
     ({"twitter_translate_timeout_seconds": -2}, 1),
 ])
 def test_translation_timeout_config_compatibility(plugin_module, config, expected):
-    plugin = plugin_module.XSentinelPlugin(object(), config)
+    plugin = plugin_module.MyTwitterPlugin(object(), config)
     assert plugin.translate_timeout_seconds == expected
     assert plugin.message_service.settings.translate_timeout_seconds == expected
     assert plugin.message_service.avatar_cache is not None
@@ -613,13 +614,13 @@ def test_timeline_metadata_is_the_only_source_of_retweet_context(plugin_module):
         },
     }
 
-    plugin_module.XSentinelPlugin._attach_timeline_item_metadata(
+    plugin_module.MyTwitterPlugin._attach_timeline_item_metadata(
         tweet_info,
         {"username": "original", "is_retweet": False},
     )
     assert tweet_info["retweet"] is None
 
-    plugin_module.XSentinelPlugin._attach_timeline_item_metadata(
+    plugin_module.MyTwitterPlugin._attach_timeline_item_metadata(
         tweet_info,
         {
             "username": "original",
@@ -636,7 +637,7 @@ def test_timeline_metadata_is_the_only_source_of_retweet_context(plugin_module):
 
 @pytest.mark.asyncio
 async def test_commands_report_timeline_failures_clearly(plugin_module):
-    plugin = plugin_module.XSentinelPlugin.__new__(plugin_module.XSentinelPlugin)
+    plugin = plugin_module.MyTwitterPlugin.__new__(plugin_module.MyTwitterPlugin)
     plugin._provider_ready = True
     store = {}
 
@@ -656,7 +657,7 @@ async def test_commands_report_timeline_failures_clearly(plugin_module):
             raise plugin_module.FxTwitterTimelineError("首页请求失败")
 
     class Event:
-        message_str = "/X哨兵关注 tester"
+        message_str = "/推特关注 tester"
         unified_msg_origin = "session"
 
         @staticmethod
@@ -759,7 +760,7 @@ async def test_poll_interval_save_wakes_timer_and_rolls_back_on_failure(
             if self.fail:
                 raise RuntimeError("disk full")
 
-    plugin = plugin_module.XSentinelPlugin.__new__(plugin_module.XSentinelPlugin)
+    plugin = plugin_module.MyTwitterPlugin.__new__(plugin_module.MyTwitterPlugin)
     plugin.config = Config()
     plugin.poll_interval = 5
     plugin._poll_wakeup = asyncio.Event()
@@ -861,7 +862,7 @@ def test_retweet_dedup_cache_is_bounded(plugin_module):
 async def test_test_command_and_link_recognition_share_prepared_delivery(
     plugin_module,
 ):
-    plugin = plugin_module.XSentinelPlugin.__new__(plugin_module.XSentinelPlugin)
+    plugin = plugin_module.MyTwitterPlugin.__new__(plugin_module.MyTwitterPlugin)
     plugin._provider_ready = True
     plugin.include_retweets = True
     plugin.link_recognition_mode = plugin_module.LINK_RECOGNITION_MODE_AUTO
@@ -935,7 +936,7 @@ async def test_test_command_and_link_recognition_share_prepared_delivery(
     test_results = [
         result
         async for result in plugin.test_tweet(
-            Event("/X哨兵测试 tester"),
+            Event("/推特测试 tester"),
             "tester",
         )
     ]
@@ -946,7 +947,7 @@ async def test_test_command_and_link_recognition_share_prepared_delivery(
         )
     ]
     command_event = Event(
-        "/X哨兵解析 https://x.com/tester/status/123"
+        "/推特解析 https://x.com/tester/status/123"
     )
     command_results = [
         result
@@ -955,7 +956,7 @@ async def test_test_command_and_link_recognition_share_prepared_delivery(
     duplicate_results = [
         result
         async for result in plugin.on_message(
-            Event("/X哨兵解析 https://x.com/tester/status/123")
+            Event("/推特解析 https://x.com/tester/status/123")
         )
     ]
 
@@ -969,7 +970,7 @@ async def test_test_command_and_link_recognition_share_prepared_delivery(
 
 @pytest.mark.asyncio
 async def test_link_recognition_command_mode_and_off_mode(plugin_module):
-    plugin = plugin_module.XSentinelPlugin.__new__(plugin_module.XSentinelPlugin)
+    plugin = plugin_module.MyTwitterPlugin.__new__(plugin_module.MyTwitterPlugin)
     plugin._provider_ready = True
     handled = []
 
@@ -1001,7 +1002,7 @@ async def test_link_recognition_command_mode_and_off_mode(plugin_module):
         )
     ]
     alias_event = Event(
-        "/xsentinel_parse https://twitter.com/tester/status/123"
+        "/twitter_parse https://twitter.com/tester/status/123"
     )
     command_results = [
         result
@@ -1009,7 +1010,7 @@ async def test_link_recognition_command_mode_and_off_mode(plugin_module):
     ]
     missing_link_results = [
         result
-        async for result in plugin.parse_tweet_link(Event("/X哨兵解析"))
+        async for result in plugin.parse_tweet_link(Event("/推特解析"))
     ]
 
     assert automatic_results == []
@@ -1019,7 +1020,7 @@ async def test_link_recognition_command_mode_and_off_mode(plugin_module):
     assert "用法" in missing_link_results[0]
 
     plugin.link_recognition_mode = plugin_module.LINK_RECOGNITION_MODE_OFF
-    off_event = Event("/X哨兵解析 https://x.com/tester/status/456")
+    off_event = Event("/推特解析 https://x.com/tester/status/456")
     off_results = [
         result
         async for result in plugin.parse_tweet_link(off_event)
@@ -1101,3 +1102,32 @@ async def test_processed_tweet_history_is_bounded_and_legacy_safe(plugin_module)
     assert len(store["tester"]["processed_tweet_ids"]) == 500
     assert store["tester"]["processed_tweet_ids"][0] == "6"
     assert store["tester"]["processed_tweet_ids"][-1] == "505"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("old_name", ["astrbot_plugin_twitter", "astrbot_plugin_x_sentinel"])
+async def test_shared_commands_yield_to_active_previous_plugin(plugin_module, old_name):
+    active = True
+    context = types.SimpleNamespace(get_registered_star=lambda name: (
+        types.SimpleNamespace(activated=active) if name == old_name else None
+    ))
+    plugin = plugin_module.MyTwitterPlugin(context, {})
+
+    class Event:
+        stopped = False
+        message_str = "/推特解析 https://x.com/tester/status/123"
+
+        def stop_event(self):
+            self.stopped = True
+
+    event = Event()
+    for method in (plugin.follow_twitter, plugin.batch_follow_twitter,
+                   plugin.unfollow_twitter, plugin.batch_unfollow_twitter,
+                   plugin.clear_all_subscriptions, plugin.list_follows,
+                   plugin.toggle_push, plugin.test_tweet, plugin.parse_tweet_link,
+                   plugin.on_message):
+        assert [result async for result in method(event)] == []
+    assert not event.stopped
+    assert getattr(plugin, "_test_kv", {}) == {}
+    active = False
+    assert not plugin._legacy_plugin_active()

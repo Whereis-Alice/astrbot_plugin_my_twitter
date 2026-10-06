@@ -1,7 +1,7 @@
 {
   "pages": {
     "subscriptions": {
-      "title": "X Sentinel Subscriptions",
+      "title": "My Twitter Subscriptions",
       "description": "Manage chat subscriptions and polling interval"
     }
   }

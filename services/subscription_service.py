@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 
-KV_SUBS_KEY = "x_sentinel_subs"
-KV_RETWEET_DEDUP_KEY = "x_sentinel_retweet_dedup_seen"
+KV_SUBS_KEY = "my_twitter_subs"
+KV_RETWEET_DEDUP_KEY = "my_twitter_retweet_dedup_seen"
 RETWEET_DEDUP_MAX_ITEMS = 500
 PROCESSED_TWEET_MAX_ITEMS = 500
 RECENT_DELIVERY_MAX_ITEMS = 5

@@ -125,7 +125,7 @@
         "description": "推送消息附带帖子链接",
         "type": "bool",
         "default": true,
-        "hint": "开启后消息末尾附带对应 X/Twitter 帖子链接；关闭后轮询推送、X哨兵测试和链接识别解析出的推文消息都不附带帖子链接"
+        "hint": "开启后消息末尾附带对应 X/Twitter 帖子链接；关闭后轮询推送、推特测试和链接识别解析出的推文消息都不附带帖子链接"
       }
     }
   },
@@ -135,10 +135,10 @@
     "hint": "控制转帖推送、链接识别等内容策略。",
     "items": {
       "twitter_include_retweets": {
-        "description": "轮询推送和X哨兵测试时推送转帖",
+        "description": "轮询推送和推特测试时推送转帖",
         "type": "bool",
         "default": true,
-        "hint": "开启后会推送转帖，并在消息中标明谁转发了谁；关闭后轮询跳过转帖，/X哨兵测试会寻找最新的非转贴推文"
+        "hint": "开启后会推送转帖，并在消息中标明谁转发了谁；关闭后轮询跳过转帖，/推特测试会寻找最新的非转贴推文"
       },
       "twitter_deduplicate_retweets": {
         "description": "轮询推送时对转帖去重",
@@ -160,7 +160,7 @@
           "关闭",
           "开启但仅指令触发"
         ],
-        "hint": "自动解析会识别聊天中的 twitter.com / x.com 链接；仅指令触发时需使用 /X哨兵解析 <推文链接>；关闭后两种方式均不解析"
+        "hint": "自动解析会识别聊天中的 twitter.com / x.com 链接；仅指令触发时需使用 /推特解析 <推文链接>；关闭后两种方式均不解析"
       }
     }
   },
@@ -219,12 +219,6 @@
         "description": "每个会话每轮最多接收推文数",
         "default": 3,
         "hint": "超出配额的推文直接跳过。"
-      },
-      "recovery_gap_minutes": {
-        "type": "int",
-        "description": "视为中断的检查间隔（分钟）",
-        "default": 15,
-        "hint": "恢复后第一轮只同步游标，不补发中断期间的旧推文。"
       }
     }
   },
@@ -241,6 +235,12 @@
       "config_imported": {
         "type": "bool",
         "description": "旧配置已完成导入",
+        "default": false,
+        "invisible": true
+      },
+      "previous_config_imported": {
+        "description": "旧名称版本的配置已继承（自动管理）",
+        "type": "bool",
         "default": false,
         "invisible": true
       }

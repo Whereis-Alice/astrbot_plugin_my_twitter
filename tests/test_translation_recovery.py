@@ -285,7 +285,7 @@ async def test_blocked_translation_still_delivers_and_commits_cursors(
     plugin_module, monkeypatch, provider, collective
 ):
     store = {
-        "x_sentinel_subs": {
+        "my_twitter_subs": {
             user: {
                 "screen_name": user,
                 "since_id": "0",
@@ -330,7 +330,7 @@ async def test_blocked_translation_still_delivers_and_commits_cursors(
     async def put_kv(key, data):
         previous = store.get(key, {})
         store[key] = copy.deepcopy(data)
-        if key == "x_sentinel_subs":
+        if key == "my_twitter_subs":
             # 消费位置先提交，成功记录稍后另存；失败批次不自动重试。
             if any(info["since_id"] != previous[user]["since_id"]
                    for user, info in data.items()):
@@ -368,15 +368,15 @@ async def test_blocked_translation_still_delivers_and_commits_cursors(
     assert len(context.calls) == context.cancelled == 2
     assert len(sent_text) == 6
     assert all("翻译自原文" not in text for text in sent_text)
-    assert all(author["since_id"] == "3" for author in store["x_sentinel_subs"].values())
+    assert all(author["since_id"] == "3" for author in store["my_twitter_subs"].values())
     assert len(checkpoints) == 2
-    for author in store["x_sentinel_subs"].values():
+    for author in store["my_twitter_subs"].values():
         history = author["subscribers"]["session"]["recent_deliveries"]
         assert [item["tweet_id"] for item in history] == ["3", "2", "1"]
     assert not delivery.has_collected and not polling.has_pending_collective
 
     # 即使游标意外回退，成功记录仍阻止重复发送和不必要的翻译调用。
-    for author in store["x_sentinel_subs"].values():
+    for author in store["my_twitter_subs"].values():
         author["since_id"] = "0"
         author["processed_tweet_ids"] = []
     context.block = False

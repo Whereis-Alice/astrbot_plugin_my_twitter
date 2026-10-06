@@ -25,7 +25,7 @@ class _Logger:
 
 
 def _load_twitter_api_module():
-    module_name = "twitter_api_fxxsentinel_test"
+    module_name = "twitter_api_fxtwitter_test"
     sys.modules.pop(module_name, None)
 
     astrbot = types.ModuleType("astrbot")
@@ -334,7 +334,7 @@ async def test_provider_clients_use_matching_request_headers(api_module):
     assert nitter_client.headers["user-agent"].startswith("Mozilla/5.0")
     assert "text/html" in nitter_client.headers["accept"]
     assert fxtwitter_client.headers["user-agent"].startswith(
-        "AstrBot-X-Sentinel/"
+        "AstrBot-My-Twitter/"
     )
     assert fxtwitter_client.headers["accept"] == "application/json"
 

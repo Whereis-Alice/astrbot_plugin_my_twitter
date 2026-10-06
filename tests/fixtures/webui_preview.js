@@ -4,7 +4,7 @@
   const groups = [
     {umo: "demo:GroupMessage:10001", group_id: "10001", group_name: "设计与开发交流组", platform_id: "QQ · 主机器人", available: true,
       subscriptions: [author("AstrBot", "AstrBot 开发动态"), author("OpenAI", "OpenAI"), author("design_notes", "设计手记 · Design Notes"),
-        ...Array.from({length: 112}, (_, i) => author(`creator_${i + 1}`, i ? `创作者 ${String(i + 1).padStart(3, "0")}` : '超长名称 <img src=x onerror=alert(1)> & 🌿 设计、科技与日常灵感记录'))]},
+        ...Array.from({length: 112}, (_, i) => author(`creator_${i + 1}`, i ? `创作者 ${String(i + 1).padStart(3, "0")}` : '设计、科技与日常灵感记录 🌿'))]},
     {umo: "demo:GroupMessage:10002", group_id: "10002", group_name: "灵感收集室", platform_id: "QQ · 主机器人", available: true, subscriptions: []},
     {umo: "backup:GroupMessage:10003", group_id: "10003", group_name: "未连接群聊", platform_id: "QQ · 备用机器人", available: false, subscriptions: [author("archive", "历史订阅")]},
   ];
@@ -39,7 +39,7 @@
           ? Array.from({length: existing.username === "AstrBot" ? 5 : 1}, (_, i) => ({
               tweet_id: String(1234567890000000 + i),
               delivered_at: new Date(Date.now() - i * 3600000).toISOString(),
-              text: i === 1 ? "这是一条较长的推文摘要，包含界面中的安全文本 <img src=x> 与 Emoji 🌿。".repeat(12).slice(0, 500)
+              text: i === 1 ? "这是一条较长的推文摘要，分享创作过程与日常灵感 🌿。".repeat(12).slice(0, 500)
                 : ["新版本开发进展：更清晰的订阅管理，以及面向每个会话的最近推送记录。", "", "今天的灵感记录：把复杂的事情做得简单一些。", "分享一组新的设计与开发工具。", "欢迎关注 AstrBot 社区动态。"][i],
               truncated: i === 1, is_retweet: i === 3,
             })) : [];

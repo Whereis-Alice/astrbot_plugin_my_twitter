@@ -1,4 +1,4 @@
-"""X 哨兵订阅管理 Plugin Page 的后端接口。"""
+"""我的推特订阅管理 Plugin Page 的后端接口。"""
 
 import asyncio
 import re
@@ -8,14 +8,14 @@ from astrbot.api import logger
 from astrbot.api.web import error_response, json_response, request
 
 
-PLUGIN_NAME = "astrbot_plugin_x_sentinel"
+PLUGIN_NAME = "astrbot_plugin_my_twitter"
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{1,15}$")
 MESSAGE_TYPES = {"GroupMessage", "FriendMessage", "OtherMessage"}
 GROUP_LIST_TIMEOUT_SECONDS = 6
 
 
-class XSentinelWebUIController:
-    """注册并实现 X 哨兵订阅管理页面所需的 Web API。"""
+class MyTwitterWebUIController:
+    """注册并实现 我的推特订阅管理页面所需的 Web API。"""
 
     def __init__(self, plugin: Any, context: Any):
         self.plugin = plugin

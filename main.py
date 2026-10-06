@@ -1,5 +1,5 @@
 """
-AstrBot X 哨兵插件
+AstrBot 我的推特插件
 
 支持 Nitter 与 FxTwitter API 数据源，以及订阅、定时推送、链接识别、
 合并转发消息和推文翻译。
@@ -28,7 +28,8 @@ from .services import (
 )
 from .services.avatar_cache_service import AvatarCacheService
 from .services.migration_service import (
-    LEGACY_PLUGIN_ID, MIGRATION_KEY, MigrationService, import_legacy_config,
+    LEGACY_PLUGIN_ID, PREVIOUS_PLUGIN_ID, MIGRATION_KEY, MigrationService,
+    import_legacy_config, import_previous_config,
 )
 from .twitter_api import (
     DATA_PROVIDER_FXTWITTER,
@@ -41,18 +42,18 @@ from .twitter_api import (
 )
 
 try:
-    from .twitter_webui import XSentinelWebUIController
+    from .twitter_webui import MyTwitterWebUIController
 except ModuleNotFoundError as exc:
     if exc.name != "astrbot.api.web":
         raise
-    XSentinelWebUIController = None
+    MyTwitterWebUIController = None
 
 
 TWITTER_LINK_PATTERN = re.compile(
     r"(https?://(?:twitter\.com|x\.com)/([a-zA-Z0-9_]+)/status/(\d+))"
 )
 TWITTER_PARSE_COMMAND_PATTERN = re.compile(
-    r"^\s*/(?:X哨兵解析|xsentinel_parse)(?:\s|$)",
+    r"^\s*/(?:推特解析|twitter_parse)(?:\s|$)",
     re.IGNORECASE,
 )
 
@@ -90,8 +91,8 @@ def _normalize_link_recognition_mode(value: Any) -> str:
     return LINK_RECOGNITION_MODE_AUTO
 
 
-class XSentinelPlugin(Star):
-    """X 哨兵插件主类。"""
+class MyTwitterPlugin(Star):
+    """我的推特插件主类。"""
 
     @property
     def _provider_ready(self) -> bool:
@@ -138,13 +139,16 @@ class XSentinelPlugin(Star):
             from astrbot.core.utils.astrbot_path import get_astrbot_config_path
             source = Path(get_astrbot_config_path()) / "astrbot_plugin_twitter_config.json"
             schema = json.loads((Path(__file__).parent / "_conf_schema.json").read_text(encoding="utf-8"))
-            import_legacy_config(config, source, schema)
+            previous_source = source.with_name("astrbot_plugin_x_sentinel_config.json")
+            previous = import_previous_config(config, previous_source, schema)
+            if previous["state"] == "not_found":
+                import_legacy_config(config, source, schema)
         except ImportError:
             # 旧 SDK 没有路径辅助 API 时允许插件继续启动。
             pass
         except Exception as exc:
             self._config_migration_error = str(exc)
-            logger.error(f"X 哨兵旧配置导入失败，自动推送将暂停: {exc}")
+            logger.error(f"我的推特旧配置导入失败，自动推送将暂停: {exc}")
 
         self.proxy = str(self._cfg("basic", "twitter_proxy", "") or "") or None
         self.data_provider = str(
@@ -387,7 +391,7 @@ class XSentinelPlugin(Star):
             ),
             avatar_cache=AvatarCacheService(
                 self.twitter_api,
-                lambda: StarTools.get_data_dir("astrbot_plugin_x_sentinel"),
+                lambda: StarTools.get_data_dir("astrbot_plugin_my_twitter"),
             ),
         )
         self.delivery_service = TweetDeliveryService(
@@ -417,11 +421,11 @@ class XSentinelPlugin(Star):
 
         self._webui_controller = None
         register_web_api = getattr(context, "register_web_api", None)
-        if XSentinelWebUIController is not None and callable(register_web_api):
+        if MyTwitterWebUIController is not None and callable(register_web_api):
             try:
-                self._webui_controller = XSentinelWebUIController(self, context)
+                self._webui_controller = MyTwitterWebUIController(self, context)
             except Exception as exc:
-                logger.warning(f"X 哨兵订阅管理 WebUI 注册失败: {exc}")
+                logger.warning(f"我的推特订阅管理 WebUI 注册失败: {exc}")
         else:
             logger.info("当前 AstrBot 版本不支持 Plugin Pages，跳过订阅管理 WebUI")
 
@@ -458,23 +462,21 @@ class XSentinelPlugin(Star):
 
     async def initialize(self):
         """初始化数据源并启动轮询任务。"""
-        logger.info("X 哨兵插件初始化中...")
+        logger.info("我的推特插件初始化中...")
 
         if self._config_migration_error:
             self._migration_report = {"state": "failed", "error": "旧配置导入失败，请查看日志"}
             return
-        if self._cfg("migration", "import_legacy", True):
-            try:
-                self._migration_report = await MigrationService(
-                    self._get_kv_data, self._put_kv_data, self._read_legacy_kv,
-                ).run()
-                logger.info(f"X 哨兵数据继承: {self._migration_report}")
-            except Exception as exc:
-                self._migration_report = {"state": "failed", "error": "旧数据迁移失败，请查看日志"}
-                logger.error(f"X 哨兵迁移失败，为保护数据暂停自动推送: {exc}")
-                return
-        else:
-            self._migration_report = {"state": "disabled"}
+        try:
+            self._migration_report = await MigrationService(
+                self._get_kv_data, self._put_kv_data, self._read_legacy_kv,
+                self._read_previous_kv,
+            ).run(import_legacy=self._cfg("migration", "import_legacy", True))
+            logger.info(f"我的推特数据继承: {self._migration_report}")
+        except Exception as exc:
+            self._migration_report = {"state": "failed", "error": "旧数据迁移失败，请查看日志"}
+            logger.error(f"我的推特迁移失败，为保护数据暂停自动推送: {exc}")
+            return
 
         if self.collective_forward and not self.use_node:
             logger.warning(
@@ -509,7 +511,7 @@ class XSentinelPlugin(Star):
                     f"间隔 {self.poll_interval} 分钟"
                 )
 
-        logger.info("X 哨兵插件初始化完成")
+        logger.info("我的推特插件初始化完成")
 
     async def terminate(self):
         """停用立即停止发送，并丢弃缓存，避免停用后继续推送。"""
@@ -530,29 +532,36 @@ class XSentinelPlugin(Star):
         if self.message_service.avatar_cache is not None:
             await self.message_service.avatar_cache.close()
         await self.twitter_api.close()
-        logger.info("X 哨兵插件已停止")
+        logger.info("我的推特插件已停止")
 
     async def _read_legacy_kv(self, key: str, default: Any) -> Any:
         from astrbot.core import sp
         return await sp.get_async("plugin", LEGACY_PLUGIN_ID, key, default)
+
+    async def _read_previous_kv(self, key: str, default: Any) -> Any:
+        from astrbot.core import sp
+        return await sp.get_async("plugin", PREVIOUS_PLUGIN_ID, key, default)
 
     def _legacy_plugin_active(self) -> bool:
         """原插件仍在运行时新插件待命，避免两份订阅重复推送。"""
         lookup = getattr(getattr(self, "context", None), "get_registered_star", None)
         if not callable(lookup):
             return False
-        old = lookup("astrbot_plugin_twitter")
-        return bool(old is not None and getattr(old, "activated", False))
+        for name in ("astrbot_plugin_twitter", "astrbot_plugin_x_sentinel"):
+            old = lookup(name)
+            if old is not None and getattr(old, "activated", False):
+                return True
+        return False
 
-    @filter.command("X哨兵状态", alias={"xsentinel_status"})
+    @filter.command("推特状态", alias={"twitter_status"})
     @filter.permission_type(filter.PermissionType.ADMIN)
-    async def sentinel_status(self, event: AstrMessageEvent):
+    async def twitter_status(self, event: AstrMessageEvent):
         """查看数据继承、数据源和后台轮询状态。"""
         report = await self.get_kv_data(MIGRATION_KEY, self._migration_report)
         subs = await self._get_subs()
         states = {"completed": "已完成", "not_found": "未发现旧数据", "pending": "待执行", "disabled": "未启用", "failed": "失败（查看日志）"}
         yield event.plain_result(
-            f"X 哨兵 v1.0.0\n数据继承：{states.get(report.get('state'), report.get('state'))}\n"
+            f"我的推特 v1.0.1\n数据继承：{states.get(report.get('state'), report.get('state'))}\n"
             f"原订阅：{report.get('authors', 0)} 个推主 / {report.get('relations', 0)} 条关系\n"
             f"当前订阅：{len(subs)} 个推主\n数据源：{self.data_provider} / {'可用' if self._provider_ready else '待恢复'}\n"
             f"后台轮询：{'待命（原插件仍启用）' if self._legacy_plugin_active() else ('运行中' if self._running else '已暂停')}\n"
@@ -717,20 +726,22 @@ class XSentinelPlugin(Star):
                 if self.data_provider == DATA_PROVIDER_FXTWITTER:
                     self._provider_ready = bool(self.twitter_api.is_ready)
 
-    @filter.command("X哨兵关注", alias={"xsentinel_follow"})
+    @filter.command("推特关注", alias={"twitter_follow"})
     async def follow_twitter(
         self,
         event: AstrMessageEvent,
         username: str = "",
     ):
-        """订阅推主，格式: /X哨兵关注 <推主id> [r18] [媒体]。"""
+        """订阅推主，格式: /推特关注 <推主id> [r18] [媒体]。"""
+        if self._legacy_plugin_active():
+            return
         if not self._provider_ready:
             yield event.plain_result(self._provider_unavailable_message())
             return
 
         if not username:
             yield event.plain_result(
-                "请提供推主ID，用法: /X哨兵关注 <推主ID> [r18] [媒体]"
+                "请提供推主ID，用法: /推特关注 <推主ID> [r18] [媒体]"
             )
             return
 
@@ -780,9 +791,11 @@ class XSentinelPlugin(Star):
             f"选项: {r18_str}{media_str}"
         )
 
-    @filter.command("X哨兵批量关注", alias={"xsentinel_batch_follow"})
+    @filter.command("推特批量关注", alias={"twitter_batch_follow"})
     async def batch_follow_twitter(self, event: AstrMessageEvent):
         """批量订阅推主。"""
+        if self._legacy_plugin_active():
+            return
         if not self._provider_ready:
             yield event.plain_result(self._provider_unavailable_message())
             return
@@ -790,7 +803,7 @@ class XSentinelPlugin(Star):
         tokens = event.message_str.strip().split()[1:]
         if not tokens:
             yield event.plain_result(
-                "请提供推主ID，用法: /X哨兵批量关注 "
+                "请提供推主ID，用法: /推特批量关注 "
                 "<推主ID1> <推主ID2> ... [r18] [媒体]"
             )
             return
@@ -851,15 +864,17 @@ class XSentinelPlugin(Star):
             + "\n".join(results)
         )
 
-    @filter.command("X哨兵取关", alias={"xsentinel_unfollow"})
+    @filter.command("推特取关", alias={"twitter_unfollow"})
     async def unfollow_twitter(
         self,
         event: AstrMessageEvent,
         username: str = "",
     ):
         """取关推主。"""
+        if self._legacy_plugin_active():
+            return
         if not username:
-            yield event.plain_result("请提供推主ID，用法: /X哨兵取关 <推主ID>")
+            yield event.plain_result("请提供推主ID，用法: /推特取关 <推主ID>")
             return
 
         username = username.strip("@").strip()
@@ -872,13 +887,15 @@ class XSentinelPlugin(Star):
             return
         yield event.plain_result(f"已取关 {remove_result['username']}")
 
-    @filter.command("X哨兵批量取关", alias={"xsentinel_batch_unfollow"})
+    @filter.command("推特批量取关", alias={"twitter_batch_unfollow"})
     async def batch_unfollow_twitter(self, event: AstrMessageEvent):
         """批量取关推主。"""
+        if self._legacy_plugin_active():
+            return
         tokens = event.message_str.strip().split()[1:]
         if not tokens:
             yield event.plain_result(
-                "请提供推主ID，用法: /X哨兵批量取关 "
+                "请提供推主ID，用法: /推特批量取关 "
                 "<推主ID1> <推主ID2> ..."
             )
             return
@@ -901,11 +918,13 @@ class XSentinelPlugin(Star):
         )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
-    @filter.command("X哨兵清空订阅", alias={"xsentinel_clear_all"})
+    @filter.command("推特清空订阅", alias={"twitter_clear_all"})
     async def clear_all_subscriptions(self, event: AstrMessageEvent, confirmation: str = ""):
         """清空所有推文订阅。"""
+        if self._legacy_plugin_active():
+            return
         if confirmation != "确认":
-            yield event.plain_result("此操作会清空所有会话的订阅。如需继续，请发送 /X哨兵清空订阅 确认")
+            yield event.plain_result("此操作会清空所有会话的订阅。如需继续，请发送 /推特清空订阅 确认")
             return
         cleared = await self._clear_subscriptions()
         if not cleared["authors"]:
@@ -943,9 +962,11 @@ class XSentinelPlugin(Star):
             for index, body in enumerate(chunks, 1)
         ]
 
-    @filter.command("X哨兵列表", alias={"xsentinel_list"})
+    @filter.command("推特列表", alias={"twitter_list"})
     async def list_follows(self, event: AstrMessageEvent):
         """以分段合并转发查看当前会话的完整订阅列表。"""
+        if self._legacy_plugin_active():
+            return
         umo = event.unified_msg_origin
         subs = await self._get_subs()
         lines = []
@@ -970,20 +991,22 @@ class XSentinelPlugin(Star):
             return
 
         nodes = [
-            Node(content=[Plain(text)], name="X哨兵订阅列表", uin=event.get_self_id())
+            Node(content=[Plain(text)], name="推特订阅列表", uin=event.get_self_id())
             for text in self._subscription_list_chunks(lines)
         ]
         yield event.chain_result([Nodes(nodes)])
 
-    @filter.command("X哨兵推送", alias={"xsentinel_push"})
+    @filter.command("推特推送", alias={"twitter_push"})
     async def toggle_push(
         self,
         event: AstrMessageEvent,
         action: str = "",
     ):
         """开启或关闭当前会话的全部推文推送。"""
+        if self._legacy_plugin_active():
+            return
         if action not in ("开启", "关闭"):
-            yield event.plain_result("用法: /X哨兵推送 开启 或 /X哨兵推送 关闭")
+            yield event.plain_result("用法: /推特推送 开启 或 /推特推送 关闭")
             return
 
         enabled = action == "开启"
@@ -999,19 +1022,21 @@ class XSentinelPlugin(Star):
         else:
             yield event.plain_result("当前没有订阅任何推主")
 
-    @filter.command("X哨兵测试", alias={"xsentinel_test"})
+    @filter.command("推特测试", alias={"twitter_test"})
     async def test_tweet(
         self,
         event: AstrMessageEvent,
         username: str = "",
     ):
         """立即获取并推送指定推主的最新一条推文。"""
+        if self._legacy_plugin_active():
+            return
         if not self._provider_ready:
             yield event.plain_result(self._provider_unavailable_message())
             return
         if not username:
             yield event.plain_result(
-                "请提供推主ID，用法: /X哨兵测试 <推主ID>"
+                "请提供推主ID，用法: /推特测试 <推主ID>"
             )
             return
 
@@ -1156,9 +1181,11 @@ class XSentinelPlugin(Star):
             if report_errors:
                 yield event.plain_result("解析推文链接失败，请稍后重试")
 
-    @filter.command("X哨兵解析", alias={"xsentinel_parse"})
+    @filter.command("推特解析", alias={"twitter_parse"})
     async def parse_tweet_link(self, event: AstrMessageEvent):
         """解析指定的 Twitter/X 推文链接。"""
+        if self._legacy_plugin_active():
+            return
         event.stop_event()
         if self.link_recognition_mode == LINK_RECOGNITION_MODE_OFF:
             yield event.plain_result("推文链接解析已关闭")
@@ -1167,7 +1194,7 @@ class XSentinelPlugin(Star):
         match = TWITTER_LINK_PATTERN.search(event.message_str or "")
         if not match:
             yield event.plain_result(
-                "请提供推文链接，用法: /X哨兵解析 <Twitter/X 推文链接>"
+                "请提供推文链接，用法: /推特解析 <Twitter/X 推文链接>"
             )
             return
         if not self._provider_ready:
