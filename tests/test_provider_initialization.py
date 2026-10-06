@@ -103,6 +103,10 @@ class FakeFxTwitterTimelineError(RuntimeError):
     pass
 
 
+class FakeNitterProtectedAccountError(FakeFxTwitterTimelineError):
+    pass
+
+
 def _load_main_module():
     package_name = "twitter_provider_test_package"
     for module_name in list(sys.modules):
@@ -170,6 +174,7 @@ def _load_main_module():
     twitter_api.TwitterAPI = FakeTwitterAPI
     twitter_api.WEBSITE_LIST = ["https://nitter.test"]
     twitter_api.get_next_website = lambda *_args, **_kwargs: None
+    twitter_api.NitterProtectedAccountError = FakeNitterProtectedAccountError
     sys.modules[twitter_api.__name__] = twitter_api
 
     spec = importlib.util.spec_from_file_location(

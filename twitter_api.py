@@ -60,6 +60,10 @@ class FxTwitterTimelineError(RuntimeError):
     """FxTwitter 时间线请求失败或分页结果不完整。"""
 
 
+class NitterProtectedAccountError(FxTwitterTimelineError):
+    """Nitter 返回受保护账号页面，账号时间线对当前请求不可见。"""
+
+
 class TwitterAPI:
     """Twitter 数据访问层，向上提供兼容的 Nitter/FxTwitter 接口。"""
 
@@ -383,6 +387,25 @@ class TwitterAPI:
                 test_url = f"{url}/elonmusk"
                 resp = await client.get(test_url, timeout=15.0)
                 if resp.status_code == 200:
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    if soup.select_one(".timeline") is None:
+                        page_text = soup.get_text(" ", strip=True).lower()
+                        challenge_markers = (
+                            "just a moment",
+                            "verify you are human",
+                            "checking your browser",
+                            "cf-chl-",
+                            "challenge-platform",
+                            "captcha",
+                        )
+                        if any(marker in page_text for marker in challenge_markers):
+                            reason = "挑战或验证页"
+                        else:
+                            reason = "缺少 .timeline"
+                        logger.debug(
+                            f"Nitter 镜像站不可用: {url}, HTTP 200 但页面{reason}"
+                        )
+                        continue
                     logger.info(f"Nitter 镜像站可用: {url}")
                     self.nitter_url = url
                     self.provider_ready = True
@@ -768,6 +791,10 @@ class TwitterAPI:
                 raise FxTwitterTimelineError(f"Nitter 时间线返回 HTTP {resp.status_code}")
 
             soup = BeautifulSoup(resp.text, "html.parser")
+            if soup.select_one(".timeline-protected") is not None:
+                raise NitterProtectedAccountError(
+                    f"@{username} 的账号受保护，Nitter 不提供公开时间线"
+                )
             if soup.select_one(".timeline") is None:
                 raise FxTwitterTimelineError("Nitter 未返回时间线，可能被限流或要求验证")
             return self._parse_timeline_items(
@@ -776,6 +803,8 @@ class TwitterAPI:
                 since_id=since_id,
                 limit=limit,
             )
+        except NitterProtectedAccountError:
+            raise
         except Exception as e:
             logger.error(f"获取用户时间线失败 {username}: {e}")
             raise FxTwitterTimelineError(f"Nitter 时间线请求失败: {e}") from e

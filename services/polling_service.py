@@ -7,6 +7,12 @@ from typing import Any
 from astrbot.api import logger
 
 from ..twitter_api import DATA_PROVIDER_FXTWITTER, DATA_PROVIDER_NITTER, get_next_website
+
+try:
+    from ..twitter_api import NitterProtectedAccountError
+except ImportError:  # 兼容旧版测试夹具和未提供该分类的外部数据访问层
+    class NitterProtectedAccountError(Exception):
+        pass
 from .subscription_service import RecentDelivery, SubscriptionService
 from .tweet_delivery_service import DeliveryResult, DeliveryState, TweetDeliveryService
 from .tweet_message_service import TranslationCycleState
@@ -197,6 +203,10 @@ class PollingService:
                     return False
                 if result.state is DeliveryState.QUEUED:
                     self._pending_collective_cursors[key] = tweet_id
+            return True
+        except NitterProtectedAccountError as exc:
+            # 受保护账号没有公开时间线，不应被当作 Nitter 故障触发恢复同步。
+            logger.info(f"@{username} 暂不可见，跳过本轮检查: {exc}")
             return True
         except Exception as exc:
             self.require_resync(username)

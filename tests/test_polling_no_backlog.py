@@ -23,6 +23,7 @@ def harness():
         ids = ["100"]
         timeline_failure = False
         detail_failure = False
+        protected = False
         is_ready = True
         calls = []
 
@@ -31,6 +32,11 @@ def harness():
             assert since_id == ""  # Never paginate back to an obsolete cursor.
             if self.timeline_failure:
                 raise module.FxTwitterTimelineError("temporarily unavailable")
+            if self.protected:
+                protected_error = sys.modules[
+                    f"{module.__package__}.twitter_api"
+                ].NitterProtectedAccountError
+                raise protected_error("@tester 的账号受保护")
             return [{"tweet_id": value, "username": username} for value in reversed(self.ids)][:limit]
 
         async def get_tweet(self, username, tweet_id):
@@ -102,6 +108,23 @@ async def test_startup_and_reload_only_sync_latest(harness):
     assert await h.check()
     assert h.sent == ["151"]
     assert h.store["my_twitter_subs"]["tester"]["since_id"] == "153"
+
+
+@pytest.mark.asyncio
+async def test_protected_account_is_skipped_without_resync(harness):
+    h = harness
+    assert await h.check()
+    assert "tester" in h.polling._synchronized
+
+    h.api.protected = True
+    assert await h.check()
+    assert "tester" in h.polling._synchronized
+    assert h.sent == []
+
+    h.api.protected = False
+    h.api.ids = ["100", "101"]
+    assert await h.check()
+    assert h.sent == ["101"]
 
 
 @pytest.mark.asyncio

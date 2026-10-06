@@ -561,7 +561,7 @@ class MyTwitterPlugin(Star):
         subs = await self._get_subs()
         states = {"completed": "已完成", "not_found": "未发现旧数据", "pending": "待执行", "disabled": "未启用", "failed": "失败（查看日志）"}
         yield event.plain_result(
-            f"我的推特 v1.0.1\n数据继承：{states.get(report.get('state'), report.get('state'))}\n"
+            f"我的推特 v1.0.2\n数据继承：{states.get(report.get('state'), report.get('state'))}\n"
             f"原订阅：{report.get('authors', 0)} 个推主 / {report.get('relations', 0)} 条关系\n"
             f"当前订阅：{len(subs)} 个推主\n数据源：{self.data_provider} / {'可用' if self._provider_ready else '待恢复'}\n"
             f"后台轮询：{'待命（原插件仍启用）' if self._legacy_plugin_active() else ('运行中' if self._running else '已暂停')}\n"

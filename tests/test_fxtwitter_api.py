@@ -62,6 +62,65 @@ async def test_nitter_failure_is_not_a_successful_empty_timeline(api_module, sta
     await api.close()
 
 
+@pytest.mark.asyncio
+async def test_nitter_protected_account_is_classified_separately(api_module):
+    body = """
+    <div class="timeline-header timeline-protected">
+      <h2>This account's tweets are protected.</h2>
+      <p>Only confirmed followers have access to @tester's tweets.</p>
+    </div>
+    """
+    api = api_module.TwitterAPI(nitter_url="https://nitter.example")
+    api._client = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, text=body, request=request)
+    ))
+    with pytest.raises(api_module.NitterProtectedAccountError, match="受保护"):
+        await api.get_user_timeline_items("tester")
+    await api.close()
+
+
+@pytest.mark.asyncio
+async def test_nitter_health_check_requires_timeline_page(api_module):
+    healthy_body = "<div class='timeline'><div class='timeline-item'></div></div>"
+
+    def handler(request):
+        if request.url.host == "challenge.example":
+            return httpx.Response(
+                200,
+                text="<html><title>Just a moment...</title></html>",
+                request=request,
+            )
+        return httpx.Response(200, text=healthy_body, request=request)
+
+    api = api_module.TwitterAPI()
+    api._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    result = await api.check_website_available(
+        ["https://challenge.example", "https://healthy.example"]
+    )
+
+    assert result == "https://healthy.example"
+    assert api.nitter_url == "https://healthy.example"
+    assert api.provider_ready is True
+    await api.close()
+
+
+@pytest.mark.asyncio
+async def test_nitter_health_check_rejects_http_200_without_timeline(api_module):
+    api = api_module.TwitterAPI()
+    api.provider_ready = True
+    api._client = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            text="<html><title>Verify you are human</title></html>",
+            request=request,
+        )
+    ))
+
+    assert await api.check_website_available(["https://challenge.example"]) is None
+    assert api.provider_ready is False
+    await api.close()
+
+
 def test_provider_defaults_and_base_normalization(api_module):
     default_api = api_module.TwitterAPI()
     assert default_api.provider == "nitter"
