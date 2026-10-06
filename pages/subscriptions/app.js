@@ -115,6 +115,16 @@ function selectedSession() {
 function renderRuntime() {
   if (!state.overview) return;
   const { provider, polling, totals } = state.overview;
+  const migration = state.overview.migration || {};
+  const migrationNotice = document.getElementById("migration-notice");
+  if (migrationNotice) {
+    const labels = { completed: `已继承 ${migration.authors || 0} 个推主、${migration.relations || 0} 条订阅关系。`,
+      not_found: "未发现原插件订阅数据。", failed: "数据继承失败，请查看插件日志，暂勿卸载原插件。",
+      pending: "等待数据继承。", disabled: "未启用旧数据继承。" };
+    migrationNotice.textContent = (labels[migration.state] || "") + (state.overview.standby
+      ? " 原插件仍启用，X 哨兵处于待命状态；停用或卸载原插件后自动接管。"
+      : " 恢复后的第一轮只同步进度，不补发积压推文。");
+  }
   elements.runtimeStatus.classList.toggle("is-ready", provider.ready && polling.running);
   elements.runtimeStatus.classList.toggle("is-error", !provider.ready);
   const providerLabel = provider.name === "fxtwitter" ? "FxTwitter" : "Nitter";
@@ -641,13 +651,13 @@ async function start() {
   if (!bridge) {
     setError("当前页面未运行在 AstrBot Dashboard 中。" );
     elements.workspace.setAttribute("aria-busy", "false");
-    elements.detailView.replaceChildren(emptyState("请从 AstrBot Dashboard 打开", "在插件详情中进入「Twitter 订阅管理」。"));
+    elements.detailView.replaceChildren(emptyState("请从 AstrBot Dashboard 打开", "在插件详情中进入「X 哨兵订阅管理」。"));
     syncBusy();
     return;
   }
   const context = await bridge.ready();
-  document.title = bridge.t?.("pages.subscriptions.title", "Twitter 订阅管理")
-    || "Twitter 订阅管理";
+  document.title = bridge.t?.("pages.subscriptions.title", "X 哨兵订阅管理")
+    || "X 哨兵订阅管理";
   document.documentElement.dataset.theme = context?.isDark ? "dark" : "light";
   bridge.onContext?.((nextContext) => {
     const current = nextContext || bridge.getContext?.();

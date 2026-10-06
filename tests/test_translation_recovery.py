@@ -285,7 +285,7 @@ async def test_blocked_translation_still_delivers_and_commits_cursors(
     plugin_module, monkeypatch, provider, collective
 ):
     store = {
-        "twitter_subs": {
+        "x_sentinel_subs": {
             user: {
                 "screen_name": user,
                 "since_id": "0",
@@ -311,10 +311,10 @@ async def test_blocked_translation_still_delivers_and_commits_cursors(
     class API:
         is_ready = True
 
-        async def get_user_timeline_items(self, username, since_id):
+        async def get_user_timeline_items(self, username, since_id, limit=0):
             return [
                 {"tweet_id": str(i), "username": username}
-                for i in range(int(since_id) + 1, 4)
+                for i in range(int(since_id or "0") + 1, 4)
             ]
 
         async def get_tweet(self, username, tweet_id):
@@ -330,9 +330,8 @@ async def test_blocked_translation_still_delivers_and_commits_cursors(
     async def put_kv(key, data):
         previous = store.get(key, {})
         store[key] = copy.deepcopy(data)
-        if key == "twitter_subs":
-            assert sent_text  # 原文送达之后才能保存处理结果。
-            # History-only writes are not cursor checkpoints.
+        if key == "x_sentinel_subs":
+            # 消费位置先提交，成功记录稍后另存；失败批次不自动重试。
             if any(info["since_id"] != previous[user]["since_id"]
                    for user, info in data.items()):
                 checkpoints.append(copy.deepcopy(data))
@@ -354,30 +353,32 @@ async def test_blocked_translation_still_delivers_and_commits_cursors(
         subscriptions,
         messages,
         _delivery_settings(
-            plugin_module, use_node=collective, collective_forward=collective
+            plugin_module, use_node=collective, collective_forward=collective,
+            max_tweets_per_session=10,
         ),
     )
     polling = plugin_module.PollingService(
         api,
         subscriptions,
         delivery,
-        plugin_module.PollingSettings(True, provider, "https://nitter.test", ()),
+        plugin_module.PollingSettings(True, provider, "https://nitter.test", (), max_tweets_per_user=3),
     )
+    polling._synchronized.update({"author-a", "author-b"})
     await asyncio.wait_for(polling.check_all(), 2)
     assert len(context.calls) == context.cancelled == 2
     assert len(sent_text) == 6
     assert all("翻译自原文" not in text for text in sent_text)
-    assert all(author["since_id"] == "3" for author in store["twitter_subs"].values())
-    assert len(checkpoints) == (2 if collective else 6)
-    for author in store["twitter_subs"].values():
+    assert all(author["since_id"] == "3" for author in store["x_sentinel_subs"].values())
+    assert len(checkpoints) == 2
+    for author in store["x_sentinel_subs"].values():
         history = author["subscribers"]["session"]["recent_deliveries"]
         assert [item["tweet_id"] for item in history] == ["3", "2", "1"]
     assert not delivery.has_collected and not polling.has_pending_collective
 
-    # 下一轮重新建立失败计数，不沿用上一轮的跳过状态。
-    for author in store["twitter_subs"].values():
+    # 即使游标意外回退，成功记录仍阻止重复发送和不必要的翻译调用。
+    for author in store["x_sentinel_subs"].values():
         author["since_id"] = "0"
         author["processed_tweet_ids"] = []
     context.block = False
     await polling.check_all()
-    assert len(context.calls) == 8
+    assert len(context.calls) == 2

@@ -205,3 +205,12 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Local AstrBot runtime / private migration data
+data/
+*.db
+*.db-shm
+*.db-wal
+.env
+*.pem
+*.key

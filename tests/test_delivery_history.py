@@ -16,7 +16,7 @@ spec.loader.exec_module(module)
 
 @pytest.fixture
 def store():
-    data = {"twitter_subs": {"tester": {
+    data = {"x_sentinel_subs": {"tester": {
         "since_id": "999", "processed_tweet_ids": ["999"],
         "subscribers": {"group-a": {"status": True}, "group-b": {"status": True}},
     }}}
@@ -51,8 +51,8 @@ async def test_history_is_bounded_isolated_and_survives_reload(store):
     assert "large-media-file" not in json.dumps(records)
     assert await reloaded.get_recent_deliveries("group-b", "tester") == []
     assert await reloaded.get_recent_deliveries("group-a", "unknown") is None
-    assert data["twitter_subs"]["tester"]["since_id"] == "999"
-    assert data["twitter_subs"]["tester"]["processed_tweet_ids"] == ["999"]
+    assert data["x_sentinel_subs"]["tester"]["since_id"] == "999"
+    assert data["x_sentinel_subs"]["tester"]["processed_tweet_ids"] == ["999"]
     records.clear()
     assert len(await service.get_recent_deliveries("group-a", "tester")) == 5
     await service.add("group-a", "tester", r18=True)

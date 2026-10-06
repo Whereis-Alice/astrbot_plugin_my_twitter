@@ -8,7 +8,10 @@
         "description": "Twitter 数据源",
         "type": "string",
         "default": "nitter",
-        "options": ["nitter", "fxtwitter"],
+        "options": [
+          "nitter",
+          "fxtwitter"
+        ],
         "hint": "nitter=保持原有 Nitter HTML 抓取；fxtwitter=通过 FxTwitter JSON API 获取用户和推文。切换到 fxtwitter 后不会检测或访问 Nitter 镜像。"
       },
       "twitter_fxtwitter_api_base": {
@@ -44,8 +47,8 @@
       "twitter_poll_max_tweets_per_user": {
         "description": "每个推主每轮最多推送推文数",
         "type": "int",
-        "default": 5,
-        "hint": "数据源恢复或积压较多时，每个推主每轮最多按时间顺序推送此数量，剩余推文将在后续轮询继续推送；最小值为 1"
+        "default": 1,
+        "hint": "每个推主每轮只发送最新的此数量；更早推文直接跳过，不在下轮补发。"
       }
     }
   },
@@ -68,14 +71,20 @@
         "description": "推文正文渲染方式",
         "type": "string",
         "default": "text",
-        "options": ["text", "screenshot"],
+        "options": [
+          "text",
+          "screenshot"
+        ],
         "hint": "text=普通文字推送；screenshot=使用 AstrBot html_render 渲染 X 官方暗色时间线风格截图"
       },
       "twitter_screenshot_theme": {
         "description": "截图模式主题",
         "type": "string",
         "default": "dark",
-        "options": ["dark", "light"],
+        "options": [
+          "dark",
+          "light"
+        ],
         "hint": "dark=黑色背景 X 风格；light=白色背景 X 风格，仅在截图模式下生效"
       },
       "twitter_send_media_separately": {
@@ -88,7 +97,10 @@
         "description": "推文图片质量",
         "type": "string",
         "default": "orig",
-        "options": ["large", "orig"],
+        "options": [
+          "large",
+          "orig"
+        ],
         "hint": "large=缩略图，orig=原图（默认）"
       },
       "twitter_video_max_size_mb": {
@@ -113,7 +125,7 @@
         "description": "推送消息附带帖子链接",
         "type": "bool",
         "default": true,
-        "hint": "开启后消息末尾附带对应 X/Twitter 帖子链接；关闭后轮询推送、推特测试和链接识别解析出的推文消息都不附带帖子链接"
+        "hint": "开启后消息末尾附带对应 X/Twitter 帖子链接；关闭后轮询推送、X哨兵测试和链接识别解析出的推文消息都不附带帖子链接"
       }
     }
   },
@@ -123,10 +135,10 @@
     "hint": "控制转帖推送、链接识别等内容策略。",
     "items": {
       "twitter_include_retweets": {
-        "description": "轮询推送和推特测试时推送转帖",
+        "description": "轮询推送和X哨兵测试时推送转帖",
         "type": "bool",
         "default": true,
-        "hint": "开启后会推送转帖，并在消息中标明谁转发了谁；关闭后轮询跳过转帖，/推特测试会寻找最新的非转贴推文"
+        "hint": "开启后会推送转帖，并在消息中标明谁转发了谁；关闭后轮询跳过转帖，/X哨兵测试会寻找最新的非转贴推文"
       },
       "twitter_deduplicate_retweets": {
         "description": "轮询推送时对转帖去重",
@@ -138,9 +150,17 @@
         "description": "推文链接解析模式",
         "type": "string",
         "default": "auto",
-        "options": ["auto", "off", "command"],
-        "labels": ["开启（自动解析）", "关闭", "开启但仅指令触发"],
-        "hint": "自动解析会识别聊天中的 twitter.com / x.com 链接；仅指令触发时需使用 /推特解析 <推文链接>；关闭后两种方式均不解析"
+        "options": [
+          "auto",
+          "off",
+          "command"
+        ],
+        "labels": [
+          "开启（自动解析）",
+          "关闭",
+          "开启但仅指令触发"
+        ],
+        "hint": "自动解析会识别聊天中的 twitter.com / x.com 链接；仅指令触发时需使用 /X哨兵解析 <推文链接>；关闭后两种方式均不解析"
       }
     }
   },
@@ -187,6 +207,42 @@
         "editor_language": "markdown",
         "default": "你是一个专业的翻译助手。请将用户提供的文本翻译为{target_lang}。\n规则：仅输出翻译结果，不要添加任何解释、前缀、注释或原文对照\n保持原文的语气和格式（如换行、表情符号等）",
         "hint": "自定义翻译 system prompt。支持变量：{target_lang} 会替换为翻译目标语言。"
+      }
+    }
+  },
+  "delivery_guard": {
+    "type": "object",
+    "description": "防刷屏与恢复策略",
+    "items": {
+      "max_tweets_per_session": {
+        "type": "int",
+        "description": "每个会话每轮最多接收推文数",
+        "default": 3,
+        "hint": "超出配额的推文直接跳过。"
+      },
+      "recovery_gap_minutes": {
+        "type": "int",
+        "description": "视为中断的检查间隔（分钟）",
+        "default": 15,
+        "hint": "恢复后第一轮只同步游标，不补发中断期间的旧推文。"
+      }
+    }
+  },
+  "migration": {
+    "type": "object",
+    "description": "原插件数据继承",
+    "items": {
+      "import_legacy": {
+        "type": "bool",
+        "description": "首次启动自动继承原 Twitter 插件数据",
+        "default": true,
+        "hint": "只读旧数据并复制到独立空间；确认迁移完成后再卸载原插件。"
+      },
+      "config_imported": {
+        "type": "bool",
+        "description": "旧配置已完成导入",
+        "default": false,
+        "invisible": true
       }
     }
   }

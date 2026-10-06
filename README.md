@@ -1,166 +1,156 @@
 <div align="center">
+<img src="./logo.png" width="104" alt="X 哨兵：雷达环中的青绿色小鸟">
 
-<img src="./logo.png" width="72" alt="Twitter 推文转发插件图标">
+# X 哨兵
 
-# Twitter 推文转发
+把关注的 X / Twitter 更新送到 QQ，让恢复后的消息保持安静。
 
-将关注的 X/Twitter 推文自动送到 AstrBot 会话；也可在聊天中解析链接、翻译推文，并通过 WebUI 管理订阅。
+**订阅推送 · 恢复不补发 · 视频与动图 · 原插件数据继承**
 
-[![AstrBot 插件](https://img.shields.io/badge/AstrBot-Plugin-3178c6?style=flat-square)](https://github.com/AstrBotDevs/AstrBot)
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square)](https://www.python.org/)
-[![MIT License](https://img.shields.io/badge/License-MIT-238636?style=flat-square)](./LICENSE)
-
-**[快速开始](#快速开始) · [效果展示](#效果展示) · [指令](#聊天指令) · [配置](#配置参考)**
-
+[安装与迁移](#安装与迁移) · [防刷屏策略](#防刷屏策略) · [使用指令](#使用指令) · [常见问题](#常见问题)
 </div>
 
-![Nitter 或 FxTwitter 获取推文，经插件处理后推送到不同 AstrBot 会话的流程](./asset/readme/hero.svg)
+X 哨兵是基于 [Ars1027/astrbot_plugin_twitter](https://github.com/Ars1027/astrbot_plugin_twitter) 的独立衍生插件。保留 Nitter / FxTwitter 双数据源、翻译、截图、合并转发和订阅管理页面，重点改进数据继承、恢复推送和媒体完整性。
 
-## 效果展示
+适用于 **AstrBot 4.16 至 4.x、QQ / OneBot v11（`aiocqhttp`）**。订阅管理页面需要 AstrBot 支持 Plugin Pages；没有该功能时仍可使用聊天指令。其他消息平台未列为支持范围。
 
-推文可按普通消息或合并转发发送；截图模式可将正文渲染成仿推特风格的时间线卡片。
+## 安装与迁移
 
-<p align="center"><strong>合并转发推送</strong><br><img src="./asset/readme/forward-delivery.png" alt="群聊中收到的推文合并转发消息" width="440"></p>
+在 AstrBot 插件管理中，从以下仓库安装：
 
-<p align="center"><strong>截图模式 · 仿推特风格渲染</strong><br><a href="./asset/readme/tweet-screenshot-render.png"><img src="./asset/readme/tweet-screenshot-render.png" alt="截图模式将推文与引用内容渲染为仿推特风格的深色时间线卡片；点击查看原图" width="320"></a></p>
+```text
+https://github.com/Whereis-Alice/astrbot_plugin_x_sentinel
+```
 
-<details>
-<summary>展开查看翻译、链接识别与批量关注效果</summary>
+### 已安装原 Twitter 插件
 
-**推文翻译**
+1. **先停用原插件，暂时不要卸载或清除其数据。** 安装 X 哨兵后，首次启动会在同一个 AstrBot 实例中读取原插件配置与订阅，并复制到自己的数据空间。
+2. 打开 **X 哨兵 → 订阅管理**，或由 AstrBot 管理员发送 `/X哨兵状态`，确认显示“已完成”，并核对推主数量、订阅关系和目标会话。原来的暂停状态、R18/仅媒体设置、去重记录及最近推送记录都会保留。
+3. 核对完成后再卸载原插件。X 哨兵首次检查每个推主时只建立当前进度；之后按正常间隔推送新内容。
 
-<img src="./asset/readme/translated-tweet.png" alt="推文翻译后的聊天消息" width="440">
+如果安装时原插件仍处于启用状态，X 哨兵会先继承数据并**保持待命**，暂停自己的自动推送和自动链接解析。停用或卸载原插件后，最迟在下一轮检查时接管。手动测试和手动解析仍可以使用。
 
-**链接识别**
+**迁移是一次性复制。** 原插件的数据不会被改写；X 哨兵保留迁移快照，卸载原插件后可独立运行。重复加载不会覆盖新设置，也不会把已经删除的订阅重新加回。请尽量在停用原插件后迁移；复制完成后再在原插件中作出的修改不会自动同步。
 
-<img src="./asset/readme/link-recognition.png" alt="在聊天中识别并解析推文链接" width="440">
+旧配置会导入到相同功能的设置中；新版防刷屏配额使用新版默认值。新插件里已经改成非默认值的选项优先保留。迁移失败时会暂停自动推送并记录日志，不会把失败当成“零订阅迁移成功”。
 
-**批量关注**
+> 自动继承面向原插件标准标识 `ars1027/astrbot_plugin_twitter`，并兼容其分组配置与旧式顶层配置。跨服务器迁移需要先迁移 AstrBot 的数据和会话配置；仅复制原插件代码目录不包含订阅。请勿在确认前清除原插件数据。
 
-<img src="./asset/readme/batch-follow.png" alt="聊天中批量关注多个推主的输入与结果" width="440">
+### 全新安装
 
-</details>
+1. 配置可用的 Nitter 地址，或切换到 FxTwitter 数据源。
+2. 在要接收推送的群聊或私聊中发送 `/X哨兵关注 用户名`。用户名填写 `@` 后面的部分，例如 `Kirby_JP`。
+3. 使用 `/X哨兵测试 用户名` 手动查看一条推文，确认消息样式。自动轮询不会回填旧内容。
 
-## 快速开始
+手动安装时，将仓库放到 `data/plugins/astrbot_plugin_x_sentinel`，并在 **AstrBot 使用的 Python 环境**执行 `pip install -r requirements.txt`，随后加载插件。
 
-1. 将本仓库放入 AstrBot 的插件目录，进入该目录后，在 AstrBot 使用的 Python 环境中安装依赖：
+## 防刷屏策略
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+本插件面向“关注新动态”，**不承诺完整归档每一条推文**。以下规则会主动跳过内容，以防恢复后连续补发：
 
-2. 在 AstrBot 中加载插件。默认数据源是 Nitter；请配置可用的 `twitter_nitter_url`，或将 `twitter_data_provider` 改为 `fxtwitter`，保存后重载插件。FxTwitter 使用第三方公开 API，不需要 Nitter 镜像。
-3. 在要接收推送的会话中发送 `/推特关注 <用户名>`，然后用 `/推特测试 <用户名>` 检查消息效果；发送 `/推特列表` 可查看当前会话的订阅。
+| 场景 | 自动推送行为 |
+| --- | --- |
+| 插件重载、重启或停用后重新启用 | 每个推主第一次成功读取时间线只同步进度，不发历史内容 |
+| 数据源请求失败或检查长时间中断后恢复 | 先重新同步，再接收之后的新动态 |
+| 正常轮询内出现大量新推文 | 默认每个推主只保留最新 1 条；更早内容直接跳过 |
+| 多个推主同时更新 | 默认每个会话每轮最多接收 3 条推文；超过配额的不排队、不留到下一轮补发 |
+| 某个会话发送失败 | 已成功的会话不因其他会话失败而反复重发；恢复策略会跳过迟到内容 |
+| 停用或卸载插件 | 取消轮询并丢弃未发送的汇总缓存，不在退出时补发 |
 
-首次将新推主加入插件时，会以当前最新推文建立增量游标，之后的自动轮询推送新内容；需要立即查看一条推文时可使用 `/推特测试`。
+配额按**推文条数**计算，不是底层消息条数：一条推文的正文、图片和视频可能分别发送。想合并正文可开启“集体转发”；视频仍需独立发送。手动测试、解析不受自动轮询配额限制。
 
-## 主要功能
+## 视频与 GIF
 
-- **按会话订阅**：群聊、私聊各自维护订阅与推送开关；支持指令和 WebUI 管理。
-- **定时追踪**：从 Nitter 或 FxTwitter 读取增量推文，按旧到新推送；每个推主每轮可限制推送数量。
-- **消息呈现**：支持普通消息、单条或集体合并转发、深浅色截图、图片与视频，以及可选的转帖去重。
-- **按需解析与翻译**：手动或自动解析 `twitter.com` / `x.com` 链接；配置 LLM Provider 后可翻译推文正文。
+- 支持 Nitter 视频/GIF 容器，以及 FxTwitter 的 `video`、`gif`、`animated_gif` 媒体数据。
+- Twitter 动图通常以 **MP4** 形式提供，因此以短视频发送；是否自动循环由 QQ 客户端决定。
+- 同一个视频的多个清晰度只选取一个可用源，避免重复发送。
+- 无法直发、大小未知、超过大小上限、只有 HLS 流或数据源缺少媒体地址时，尽量保留媒体链接或原帖链接和说明，不静默吞掉视频。
+- Nitter 未提供可发送视频时会尝试用已配置的 FxTwitter API 补全；第三方服务不可用时仍会保留已有正文。
+- “单独发送推文媒体资源”关闭时，不再追加原图、视频或媒体降级链接；截图中的预览仍会显示。
 
-### WebUI 订阅管理
+视频最终由 QQ 协议端下载与上传；插件的代理预下载开关用于图片和封面，**不能替代协议端的视频网络配置**。截图渲染失败会自动改发文字，不影响继续轮询。
 
-在支持 **Plugin Pages API** 的 AstrBot 版本中，可从 Dashboard 打开“Twitter 订阅管理”。页面提供会话搜索、订阅开关、R18 与仅媒体设置、群级推送开关和轮询间隔调整。
+## 使用指令
 
-下图使用**模拟数据**展示 WebUI，不是真实群聊或推送记录。
+命令前缀以下以 `/` 举例，请以 AstrBot 的实际设置为准。所有命令都使用独立前缀，不注册原插件的 `/推特…`、`twitter_…` 别名。
 
-![使用模拟数据预览的 Twitter 订阅管理 WebUI](./asset/readme/webui-preview.png)
+| 指令 | 作用 |
+| --- | --- |
+| `/X哨兵关注 用户名 [r18] [媒体]` | 当前会话订阅；`r18` 允许敏感内容，`媒体` 仅推送含媒体的推文 |
+| `/X哨兵批量关注 用户名1 用户名2 [r18] [媒体]` | 批量订阅 |
+| `/X哨兵取关 用户名` | 移除当前会话的订阅 |
+| `/X哨兵批量取关 用户名1 用户名2` | 批量移除 |
+| `/X哨兵列表` | 查看当前会话的订阅 |
+| `/X哨兵推送 开启` / `/X哨兵推送 关闭` | 开关当前会话全部订阅的推送 |
+| `/X哨兵测试 用户名` | 手动查看一条最新符合条件的推文 |
+| `/X哨兵解析 推文链接` | 手动解析 `x.com` / `twitter.com` 帖子链接 |
+| `/X哨兵状态` | 管理员查看迁移、待命与轮询状态 |
+| `/X哨兵清空订阅` | 管理员操作；按提示确认后清空**所有会话**的订阅 |
 
-选中已连接的群聊后，可单个或批量添加推主。批量输入支持换行、空格、逗号与分号分隔，每批最多 100 个不同的有效账号；执行时可停止后续请求，已成功的添加不会撤销。点开某位推主可查看该会话最近 **5 条成功推送**的文字摘要、时间与原帖链接；记录保存在订阅数据中，插件重载后仍可查看，不保存媒体文件。旧订阅在此功能上线前的推送不会补录。
+英文别名：`xsentinel_follow`、`xsentinel_batch_follow`、`xsentinel_unfollow`、`xsentinel_batch_unfollow`、`xsentinel_list`、`xsentinel_push`、`xsentinel_test`、`xsentinel_parse`、`xsentinel_status`、`xsentinel_clear_all`。
 
-旧版 AstrBot 若缺少 Plugin Pages API，插件主体仍可加载，订阅可继续通过聊天指令管理。
+修改订阅的指令默认作用于当前会话。管理员可在 AstrBot 指令管理中限制其权限；订阅管理页面由 Dashboard 登录权限保护。
 
-## 聊天指令
+## 订阅管理页面
 
-指令作用于**当前会话**，除非下表另有说明。`<用户名>` 可填写推主 ID，关注时也可带 `@`。
+从 AstrBot Dashboard 打开 **X 哨兵 → X 哨兵订阅管理**。支持搜索群聊、批量关注、修改推送/敏感内容/仅媒体选项、群级暂停、调整全局轮询间隔，以及查看最近实际推送的摘要。迁移结果与共存待命状态显示在页面上方。
 
-| 指令 | 英文别名 | 作用 |
+![X 哨兵订阅管理页面（模拟数据）](./asset/readme/webui-preview.png)
+
+## 主要设置
+
+配置按功能分组，保留原有功能的配置键以便迁移；这些键位于新插件的独立配置文件中，不会与原插件共享。
+
+| 设置 | 默认值 | 建议 |
 | --- | --- | --- |
-| `/推特关注 <用户名> [r18] [媒体]` | `/twitter_follow` | 关注推主；可选允许 R18、仅推送含媒体的内容 |
-| `/推特批量关注 <用户1> <用户2> ... [r18] [媒体]` | `/twitter_batch_follow` | 批量关注，选项应用于本次所有推主 |
-| `/推特取关 <用户名>` | `/twitter_unfollow` | 取消当前会话中的订阅 |
-| `/推特批量取关 <用户1> <用户2> ...` | `/twitter_batch_unfollow` | 批量取消当前会话中的订阅 |
-| `/推特列表` | `/twitter_list` | 以分段合并转发列出当前会话的订阅 |
-| `/推特推送 <开启\|关闭>` | `/twitter_push` | 开关当前会话的全部推送 |
-| `/推特测试 <用户名>` | `/twitter_test` | 立即获取并发送该推主的最新推文 |
-| `/推特解析 <推文链接>` | `/twitter_parse` | 手动解析指定推文链接 |
-| `/推特清空订阅` | `/twitter_clear_all` | 清空所有会话的订阅；需要 AstrBot 管理员权限 |
+| 数据源 | Nitter | 自建 Nitter 可填内网地址；FxTwitter 的部分公开实例不提供用户时间线 |
+| 轮询间隔 | 5 分钟 | 建议至少 3 分钟，留意第三方限流 |
+| 每推主每轮数量 | 1 | 超出部分跳过，不补发 |
+| 每会话每轮数量 | 3 | 包括所有订阅推主的更新 |
+| 中断检查间隔 | 15 分钟 | 超时恢复先同步；实际阈值不低于轮询间隔的 3 倍 |
+| 单条合并转发 | 开启 | 普通消息可关闭；集体转发需同时开启此项 |
+| 正文样式 | 文字 | 可选深色/浅色截图，需可用的 AstrBot 渲染服务 |
+| 视频大小上限 | 256 MB | 大文件改为链接；仍受 QQ 协议端限制 |
+| 链接解析 | 自动 | 可选关闭或仅指令；关闭时手动解析也不可用 |
+| 翻译 | 关闭 | 选择 AstrBot 已配置的 LLM Provider；超时回退原文 |
+| 自动继承旧数据 | 开启 | 无旧插件时不影响全新使用 |
 
-`/推特列表` 会把完整列表分成多个合并转发节点，每段最多 50 条订阅、正文不超过 1000 个字符；名称较长时每段可能少于 50 条。
+翻译正文与引用共用超时预算；连续失败时本轮后续内容使用原文。头像使用有界本地缓存；媒体下载有大小和时间限制。
 
-## 配置参考
+## 常见问题
 
-在 AstrBot 插件配置页面设置以下选项。默认值与当前 `_conf_schema.json` 一致；旧版顶层扁平配置仍可读取。
+**刚迁移成功，为什么没有补发之前漏掉的推文？**
 
-| 常用配置 | 默认值 | 用途 |
-| --- | --- | --- |
-| `twitter_data_provider` | `nitter` | 选择 `nitter` 或 `fxtwitter` |
-| `twitter_nitter_url` | 空 | 自定义 Nitter 镜像地址；只在 Nitter 模式使用 |
-| `twitter_fxtwitter_api_base` | `https://api.fxtwitter.com` | FxTwitter API 地址；只在 FxTwitter 模式使用 |
-| `twitter_poll_interval` | `5` | 轮询间隔，单位为分钟 |
-| `twitter_poll_max_tweets_per_user` | `5` | 每位推主每轮最多推送的条数 |
-| `twitter_text_render_mode` | `text` | `text` 文字，或 `screenshot` 截图 |
-| `twitter_translate_enabled` | `false` | 是否翻译推文正文 |
+这是默认防刷屏行为。首次同步和恢复同步会跳过旧内容。需要查看时，使用手动测试或解析具体链接。
 
-<details>
-<summary>展开查看全部配置项</summary>
+**显示待命，什么时候开始推送？**
 
-### 数据源与网络
+原插件仍启用。停用或卸载原插件后，新插件会在下一轮接管；首次检查只同步进度。原插件卸载不会删除 X 哨兵的数据。
 
-| 配置项 | 默认值 | 说明 |
-| --- | --- | --- |
-| `twitter_data_provider` | `nitter` | `nitter` 抓取 HTML；`fxtwitter` 读取 JSON API |
-| `twitter_nitter_url` | 空 | 自定义 Nitter 镜像地址 |
-| `twitter_fxtwitter_api_base` | `https://api.fxtwitter.com` | FxTwitter API 基础地址 |
-| `twitter_proxy` | 空 | 可选代理，例如 `http://127.0.0.1:7890` |
-| `twitter_pre_download_media` | `false` | 配置代理后预下载图片与视频封面；失败时回退原 URL |
-| `twitter_poll_interval` | `5` | 轮询间隔（分钟），建议不低于 3 |
-| `twitter_poll_max_tweets_per_user` | `5` | 每位推主每轮最多推送条数，最小为 1 |
+**FxTwitter 可以解析链接，却不能订阅？**
 
-### 消息格式
+推文详情与用户时间线是不同接口。部分公开实例仅支持详情，切换到支持时间线的服务或使用 Nitter。健康检查和请求失败会记录日志，不会把失败当作空时间线。
 
-| 配置项 | 默认值 | 说明 |
-| --- | --- | --- |
-| `twitter_use_node` | `true` | 单条推文使用合并转发 |
-| `twitter_no_text` | `false` | 推文含媒体时不输出文字 |
-| `twitter_text_render_mode` | `text` | `text` 文字，或 `screenshot` 截图 |
-| `twitter_screenshot_theme` | `dark` | 截图使用 `dark` 或 `light` 主题 |
-| `twitter_send_media_separately` | `true` | 正文或截图之外继续发送原图、视频及视频降级链接 |
-| `twitter_image_quality` | `orig` | `large` 缩略图，或 `orig` 原图 |
-| `twitter_video_max_size_mb` | `256` | 视频直发大小上限，超过后发送链接 |
-| `twitter_collective_forward` | `false` | 将一轮轮询的多条推文汇总为合并转发；需同时开启 `twitter_use_node` |
-| `twitter_collective_max_authors` | `5` | 单条集体转发消息中的最多推主数 |
-| `twitter_include_tweet_link` | `true` | 在推送、测试和解析消息末尾附带帖子链接 |
+**收到正文但只有视频链接？**
 
-### 内容与翻译
+源站可能只提供 HLS、无法探测大小、超过上限，或协议端无法下载/上传。链接是预期降级结果。确认媒体发送开关已启用，并检查 AstrBot 与 QQ 协议端的网络。
 
-| 配置项 | 默认值 | 说明 |
-| --- | --- | --- |
-| `twitter_include_retweets` | `true` | 轮询与测试时包含转帖 |
-| `twitter_deduplicate_retweets` | `false` | 同一原帖被多个推主转发时按会话去重 |
-| `twitter_link_recognition_enabled` | `auto` | `auto` 自动解析、`command` 仅指令解析、`off` 关闭 |
-| `twitter_translate_enabled` | `false` | 自动翻译推文正文；需要可用的 LLM Provider |
-| `twitter_translate_target_lang` | `简体中文` | 翻译目标语言 |
-| `twitter_translate_provider_id` | 空 | 指定 LLM Provider；留空时依次尝试当前会话与第一个可用 Provider |
-| `twitter_translate_timeout_seconds` | `60` | 单条推文翻译的总时限（秒），超时回退原文 |
-| `twitter_translate_custom_prompt_enabled` | `false` | 使用自定义翻译 system prompt |
-| `twitter_translate_custom_prompt` | 内置提示词 | 自定义提示词，支持 `{target_lang}` 变量 |
+**可以回退到原插件吗？**
 
-</details>
+可以。先停用 X 哨兵，再启用原插件；旧数据未被改写。但 X 哨兵中的后续修改不会同步回旧插件，原插件仍可能补发它自己的积压。
 
-## 使用前了解
+## 开发与许可
 
-- **Nitter 镜像**：nitter镜像站目前已不可用 2026/8/27；需要自行部署时可参考 [Nitter 项目](https://github.com/zedeus/nitter)及[本地部署教程](https://mib7kzqsrf5.feishu.cn/wiki/O1ztwWl3GiBc4AknKvIcyaKsnFb?from=from_copylink)。
-- **FxTwitter 数据**：FxTwitter 是第三方公开 JSON API，并非 X/Twitter 官方 API；接口、限流和可用性由其服务决定。
-- **历史补发范围**：本轮已读取但尚未处理的推文会在后续轮询继续尝试；如果停机时间过长、数据源分页不足或旧推文已不再可见，插件无法保证补齐完整历史。
-- **会话隔离**：私聊和群聊分别保存订阅；在一处取关或关闭推送，不影响其他会话。
-- **截图头像缓存**：截图模式会在 AstrBot 插件数据目录的 `avatar_cache` 中保存有界头像缓存，最多 200 项、总计 16 MiB；它不包含推文原图或视频，也不受独立媒体发送开关控制。
+本项目继承上游代码，遵循仓库 [AGPL-3.0](./LICENSE)，保留原作者 Ars1027 的贡献说明。新版改动、迁移逻辑与 Logo 由 Whereis-Alice 维护。X/Twitter 与本项目无隶属关系。
 
-## 参考与反馈
+验证命令：
 
-本插件参考了 [nonebot-plugin-twitter](https://github.com/nek0us/nonebot-plugin-twitter) 的 Nitter 抓取思路、[astrbot_plugin_rsshub](https://github.com/FlanChanXwO/astrbot_plugin_rsshub) 的订阅管理与 KV 存储模式，以及 [astrbot_plugin_qq_group_daily_analysis](https://github.com/SXP-Simon/astrbot_plugin_qq_group_daily_analysis) 的 LLM Provider 选择思路。
+```bash
+python -m pytest -q
+python -m ruff check main.py twitter_api.py twitter_renderer.py twitter_webui.py services tests
+python -m compileall -q main.py twitter_api.py twitter_renderer.py twitter_webui.py services
+node --test tests/test_webui_batch.mjs
+git diff --check
+```
 
-项目代码由 Codex 辅助生成与迭代。遇到问题欢迎提交 [Issue](https://github.com/Ars1027/astrbot_plugin_twitter/issues)，也欢迎提交 Pull Request。代码采用 [MIT License](./LICENSE)。
+本地预览管理页面：`python tests/webui_preview.py`；预览使用模拟数据。

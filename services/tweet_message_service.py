@@ -101,16 +101,18 @@ class TweetMessageService:
     @staticmethod
     def tweet_has_media(tweet_info: dict) -> bool:
         """判断主贴或引用帖是否包含媒体。"""
-        if tweet_info.get("images") or tweet_info.get("videos"):
+        if (tweet_info.get("images") or tweet_info.get("videos")
+                or tweet_info.get("video_previews") or tweet_info.get("media_unavailable")):
             return True
         quote = tweet_info.get("quote") or {}
-        return bool(quote.get("images") or quote.get("videos"))
+        return bool(quote.get("images") or quote.get("videos")
+                    or quote.get("video_previews") or quote.get("media_unavailable"))
 
     @staticmethod
     def is_stream_video_url(video_url: str) -> bool:
         """判断视频 URL 是否为流媒体清单类资源。"""
         url = str(video_url or "").lower()
-        return ".m3u8" in url or "vmap" in url
+        return ".m3u8" in url or ".mpd" in url or "vmap" in url
 
     def video_limit_message(
         self,
@@ -131,7 +133,7 @@ class TweetMessageService:
         self,
         video_url: str,
     ) -> tuple[bool, int | None]:
-        """尽量检查视频大小；未知大小和流媒体 URL 默认放行。"""
+        """尽量检查视频大小；未知大小由调用方显式降级为链接。"""
         if self.is_stream_video_url(video_url):
             return False, None
 
@@ -162,8 +164,15 @@ class TweetMessageService:
                 logger.warning(f"添加{context_label}图片失败: {img_url}, {exc}")
 
         for video in videos:
-            video_url = str(video)
+            video_url = str(video or "").strip()
+            if not video_url:
+                continue
             try:
+                if self.is_stream_video_url(video_url):
+                    chain.append(Comp.Plain(
+                        f"\n{context_label}视频仅提供流媒体地址，无法直接发送，播放链接：{video_url}"
+                    ))
+                    continue
                 exceeds_limit, size_bytes = await self.video_exceeds_size_limit(
                     video_url
                 )
@@ -178,6 +187,12 @@ class TweetMessageService:
                     )
                     continue
 
+                if size_bytes is None:
+                    chain.append(Comp.Plain(
+                        f"\n{context_label}视频大小无法确认，为遵守大小限制已改为链接：{video_url}"
+                    ))
+                    continue
+
                 video_comp = Comp.Video.fromURL(video_url)
                 if video_comp is not None:
                     chain.append(video_comp)
@@ -186,6 +201,20 @@ class TweetMessageService:
                     f"添加{context_label}视频失败，回退为链接: {video_url}, {exc}"
                 )
                 chain.append(Comp.Plain(str(f"\n视频: {video_url}")))
+
+    def append_unavailable_media(self, chain: list, tweet_info: dict) -> None:
+        """上游只返回封面时仍明确展示原帖入口，避免附件静默消失。"""
+        if not self.settings.send_media_separately:
+            return
+        for item in (tweet_info, tweet_info.get("quote") or {}):
+            message = item.get("media_unavailable")
+            if not message and item.get("video_previews") and not item.get("videos"):
+                tweet_id = str(item.get("tweet_id") or "")
+                username = str(item.get("username") or "i")
+                if tweet_id:
+                    message = f"视频/GIF 暂无可用下载地址，请查看原帖：https://x.com/{username}/status/{tweet_id}"
+            if message:
+                chain.append(Comp.Plain(f"\n{message}"))
 
     async def build_image_component(self, img_url: str) -> Comp.Image | None:
         """根据代理配置选择合适的图片组件构建方式。"""
@@ -467,6 +496,8 @@ class TweetMessageService:
             context_label="推文",
         )
 
+        self.append_unavailable_media(chain, tweet_info)
+
         return [component for component in chain if component is not None]
 
     def tweet_link_component(
@@ -598,6 +629,8 @@ class TweetMessageService:
             tweet_info.get("videos") or [],
             context_label="推文",
         )
+
+        self.append_unavailable_media(chain, tweet_info)
 
         return [component for component in chain if component is not None]
 

@@ -15,6 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PreviewHandler(SimpleHTTPRequestHandler):
+    extensions_map = {**SimpleHTTPRequestHandler.extensions_map,
+                      ".js": "text/javascript", ".mjs": "text/javascript"}
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT / "pages/subscriptions"), **kwargs)
 

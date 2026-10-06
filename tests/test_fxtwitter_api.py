@@ -25,7 +25,7 @@ class _Logger:
 
 
 def _load_twitter_api_module():
-    module_name = "twitter_api_fxtwitter_test"
+    module_name = "twitter_api_fxxsentinel_test"
     sys.modules.pop(module_name, None)
 
     astrbot = types.ModuleType("astrbot")
@@ -48,6 +48,18 @@ def _fixture(name):
 @pytest.fixture
 def api_module():
     return _load_twitter_api_module()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status,body", [(503, "unavailable"), (200, "<html>challenge</html>")])
+async def test_nitter_failure_is_not_a_successful_empty_timeline(api_module, status, body):
+    api = api_module.TwitterAPI(nitter_url="https://nitter.example")
+    api._client = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(status, text=body, request=request)
+    ))
+    with pytest.raises(api_module.FxTwitterTimelineError):
+        await api.get_user_timeline_items("tester", "123")
+    await api.close()
 
 
 def test_provider_defaults_and_base_normalization(api_module):
@@ -96,6 +108,79 @@ def test_adapts_images_and_selects_highest_bitrate_video(api_module):
             "duration": "01:05",
         }
     ]
+
+
+def test_mixed_media_keeps_animated_gif_and_variants_without_ids(api_module):
+    api = api_module.TwitterAPI(provider="fxtwitter")
+    image = {"id": "photo", "type": "photo", "url": "https://pbs.twimg.com/photo.jpg"}
+    video = {"id": "v1", "type": "video", "url": "https://video.twimg.com/normal.mp4"}
+    gif = {"type": "animated_gif", "variants": [
+        {"content_type": "video/mp4", "url": "https://video.twimg.com/gif.mp4", "bitrate": "unknown"}
+    ]}
+    images, videos, _ = api._extract_fxtwitter_media({"media": {
+        "photos": [image], "videos": [video], "all": [image, video, gif],
+    }})
+    assert images == [image["url"]]
+    assert videos == [video["url"], "https://video.twimg.com/gif.mp4"]
+
+
+def test_video_prefers_transcode_over_hls_url(api_module):
+    assert api_module.TwitterAPI._select_fxtwitter_video_url({
+        "url": "https://video.twimg.com/master.m3u8",
+        "transcode_url": "https://video.twimg.com/transcoded.mp4",
+    }) == "https://video.twimg.com/transcoded.mp4"
+
+
+def test_nitter_gif_selects_one_direct_encoding_and_excludes_quotes(api_module):
+    api = api_module.TwitterAPI(nitter_url="https://nitter.example")
+    container = api_module.BeautifulSoup('''<div class="main-tweet">
+      <div class="gallery-gif"><video poster="/pic/gif.jpg" data-url="/v/master.m3u8">
+        <source src="//video.twimg.com/gif.mp4" type="video/mp4">
+        <source src="/v/alternate.mp4" type="video/mp4">
+      </video></div>
+      <div class="quote"><video src="/v/quote.mp4"></video></div>
+    </div>''', "html.parser").select_one(".main-tweet")
+    assert api._extract_videos(container) == ["https://video.twimg.com/gif.mp4"]
+    assert api._extract_video_previews(container) == [{
+        "poster": "https://nitter.example/pic/gif.jpg", "duration": "",
+    }]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recovered", [True, False])
+async def test_nitter_disabled_video_recovers_mp4_or_keeps_explicit_link(api_module, recovered):
+    api = api_module.TwitterAPI(nitter_url="https://nitter.example")
+    tweet = {"username": "tester", "tweet_id": "123", "video_previews": [{"poster": "thumb"}], "videos": []}
+
+    async def request(path, retries=2):
+        assert path == "2/status/123"
+        assert retries == 1
+        return {"status": {"media": {"videos": [{"url": "https://video.twimg.com/recovered.mp4"}]}}} if recovered else None
+
+    api._request_fxtwitter_json = request
+    await api._recover_nitter_videos(tweet)
+    if recovered:
+        assert tweet["videos"] == ["https://video.twimg.com/recovered.mp4"]
+        assert "media_unavailable" not in tweet
+    else:
+        assert "https://x.com/tester/status/123" in tweet["media_unavailable"]
+
+
+@pytest.mark.asyncio
+async def test_media_without_length_header_still_has_download_limit(api_module, monkeypatch):
+    class Body(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b"abc"
+            yield b"def"
+
+    api = api_module.TwitterAPI()
+    api._client = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, stream=Body())
+    ))
+    monkeypatch.setattr(api_module, "MEDIA_DOWNLOAD_MAX_BYTES", 5)
+    with pytest.raises(ValueError, match="大小限制"):
+        await api.download_media("https://example.com/image.jpg")
+    await api.close()
 
 
 def test_adapts_retweet_quote_sensitive_and_missing_fields(api_module):
@@ -249,7 +334,7 @@ async def test_provider_clients_use_matching_request_headers(api_module):
     assert nitter_client.headers["user-agent"].startswith("Mozilla/5.0")
     assert "text/html" in nitter_client.headers["accept"]
     assert fxtwitter_client.headers["user-agent"].startswith(
-        "AstrBot-Twitter-Plugin/"
+        "AstrBot-X-Sentinel/"
     )
     assert fxtwitter_client.headers["accept"] == "application/json"
 

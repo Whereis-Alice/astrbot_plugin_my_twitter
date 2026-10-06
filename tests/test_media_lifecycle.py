@@ -943,3 +943,178 @@ async def test_failed_collective_retweet_does_not_persist_dedup(plugin_module):
     assert flushed.successful_authors == frozenset()
     assert flushed.failed_authors == frozenset({"tester"})
     assert saved_seen == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("url,size,expected", [
+    ("https://video.twimg.com/animation.mp4", 1024, Video),
+    ("https://video.twimg.com/master.m3u8", None, Plain),
+    ("https://video.twimg.com/too-big.mp4", 3 * 1024 * 1024, Plain),
+    ("https://video.twimg.com/unknown.mp4", None, Plain),
+])
+async def test_video_media_is_sent_or_explicitly_linked(plugin_module, url, size, expected):
+    calls = []
+
+    async def get_size(candidate):
+        calls.append(candidate)
+        return size
+
+    service = plugin_module.TweetMessageService(
+        object(), types.SimpleNamespace(get_remote_file_size=get_size), None,
+        _message_settings(plugin_module, video_max_size_mb=2),
+    )
+    chain = [Plain("body")]
+    await service.append_media_components(chain, [], [url])
+    assert chain[0].text == "body"
+    assert isinstance(chain[1], expected)
+    if expected is Plain:
+        assert url in chain[1].text
+    if url.endswith("m3u8"):
+        assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_missing_video_url_is_visible_even_when_tweet_links_disabled(plugin_module):
+    service = plugin_module.TweetMessageService(
+        object(), object(), None,
+        _message_settings(plugin_module, text_render_mode="text", include_tweet_link=False),
+    )
+    chain = await service.build_message_chain("tester", {
+        "username": "tester", "tweet_id": "123", "text": "body",
+        "video_previews": [{"poster": "https://example.com/poster.jpg"}],
+    })
+    assert any("暂无可用下载地址" in item.text and "https://x.com/tester/status/123" in item.text
+               for item in chain if isinstance(item, Plain))
+
+
+@pytest.mark.asyncio
+async def test_partial_session_success_does_not_repeat_next_attempt(plugin_module):
+    sent = []
+    subs = {"tester": {"subscribers": {"good": {"status": True}, "bad": {"status": True}}}}
+
+    async def get_all():
+        return subs
+
+    async def send(umo, _chain):
+        if umo == "bad":
+            raise RuntimeError("adapter unavailable")
+        sent.append(umo)
+
+    async def build_chain(*_args, **_kwargs):
+        return [Plain("body")]
+
+    async def translate(*_args, **_kwargs):
+        return None, None
+
+    messages = types.SimpleNamespace(
+        build_message_chain=build_chain, maybe_translate=translate,
+        build_nickname=lambda *args: "Tester", tweet_has_media=lambda tweet: False,
+    )
+    delivery = plugin_module.TweetDeliveryService(
+        types.SimpleNamespace(send_message=send), types.SimpleNamespace(get_all=get_all),
+        messages, _delivery_settings(plugin_module),
+    )
+    tweet = {"tweet_id": "123", "username": "tester"}
+    first = await delivery.push_to_subscribers("tester", tweet)
+    second = await delivery.push_to_subscribers("tester", tweet)
+    assert first.state is _delivery_contract(plugin_module).DeliveryState.FAILED
+    assert second.state is _delivery_contract(plugin_module).DeliveryState.FAILED
+    assert sent == ["good"]
+
+
+@pytest.mark.asyncio
+async def test_automatic_session_quota_spans_authors(plugin_module):
+    sent = []
+    subs = {name: {"subscribers": {"group": {"status": True}}} for name in ("a", "b", "c")}
+
+    async def get_all():
+        return subs
+
+    async def send(umo, _chain):
+        sent.append(umo)
+
+    async def build_chain(*_args, **_kwargs):
+        return [Plain("body")]
+
+    async def translate(*_args, **_kwargs):
+        return None, None
+
+    delivery = plugin_module.TweetDeliveryService(
+        types.SimpleNamespace(send_message=send), types.SimpleNamespace(get_all=get_all),
+        types.SimpleNamespace(build_message_chain=build_chain, maybe_translate=translate,
+                              build_nickname=lambda *args: "Author", tweet_has_media=lambda tweet: False),
+        _delivery_settings(plugin_module, max_tweets_per_session=2),
+    )
+    delivery.begin_cycle()
+    states = [(await delivery.push_to_subscribers(name, {"tweet_id": "123"})).state for name in subs]
+    assert len(sent) == 2
+    assert states[-1] is _delivery_contract(plugin_module).DeliveryState.SKIPPED
+    delivery.end_cycle()
+    delivery.begin_cycle()
+    await delivery.push_to_subscribers("c", {"tweet_id": "124"})
+    assert len(sent) == 3
+
+
+@pytest.mark.asyncio
+async def test_screenshot_failure_is_not_masked_by_attachment_success(plugin_module):
+    card = Image.fromURL("https://example.com/card.jpg")
+    attachment = Image.fromURL("https://example.com/attachment.jpg")
+
+    async def send(_umo, message):
+        if card in message.chain:
+            raise RuntimeError("card failed")
+        return True
+
+    async def build_chain(*_args, **_kwargs):
+        return [card, Plain("https://x.com/tester/status/123"), attachment]
+
+    messages = types.SimpleNamespace(
+        build_message_chain=build_chain,
+        settings=_message_settings(plugin_module, text_render_mode="screenshot"),
+    )
+    delivery = plugin_module.TweetDeliveryService(
+        types.SimpleNamespace(send_message=send), object(), messages,
+        _delivery_settings(plugin_module),
+    )
+    assert await delivery.send_to_subscriber("session", "tester", {"tweet_id": "123"}, {}, "Tester") is False
+
+
+@pytest.mark.asyncio
+async def test_main_body_failure_does_not_send_orphan_video(plugin_module):
+    sent = []
+
+    async def send(_umo, message):
+        sent.append(message.chain)
+        raise RuntimeError("adapter unavailable")
+
+    async def build_chain(*_args, **_kwargs):
+        return [Plain("body"), Video.fromURL("https://example.com/video.mp4")]
+
+    delivery = plugin_module.TweetDeliveryService(
+        types.SimpleNamespace(send_message=send), object(),
+        types.SimpleNamespace(build_message_chain=build_chain),
+        _delivery_settings(plugin_module),
+    )
+    assert not await delivery.send_to_subscriber("session", "tester", {}, {}, "Tester")
+    assert not any(isinstance(component, Video) for chain in sent for component in chain)
+
+
+@pytest.mark.asyncio
+async def test_node_fallback_still_sends_video_component(plugin_module):
+    sent = []
+
+    async def send(_umo, message):
+        if isinstance(message.chain[0], Nodes):
+            raise RuntimeError("forward unsupported")
+        sent.append(message.chain)
+
+    async def build_chain(*_args, **_kwargs):
+        return [Plain("body"), Video.fromURL("https://example.com/video.mp4")]
+
+    delivery = plugin_module.TweetDeliveryService(
+        types.SimpleNamespace(send_message=send), object(),
+        types.SimpleNamespace(build_message_chain=build_chain),
+        _delivery_settings(plugin_module, use_node=True),
+    )
+    assert await delivery.send_to_subscriber("session", "tester", {}, {}, "Tester")
+    assert [type(chain[0]) for chain in sent] == [Plain, Video]

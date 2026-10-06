@@ -1,4 +1,4 @@
-"""Twitter 订阅管理 Plugin Page 的后端接口。"""
+"""X 哨兵订阅管理 Plugin Page 的后端接口。"""
 
 import asyncio
 import re
@@ -8,14 +8,14 @@ from astrbot.api import logger
 from astrbot.api.web import error_response, json_response, request
 
 
-PLUGIN_NAME = "astrbot_plugin_twitter"
+PLUGIN_NAME = "astrbot_plugin_x_sentinel"
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{1,15}$")
 MESSAGE_TYPES = {"GroupMessage", "FriendMessage", "OtherMessage"}
 GROUP_LIST_TIMEOUT_SECONDS = 6
 
 
-class TwitterWebUIController:
-    """注册并实现 Twitter 订阅管理页面所需的 Web API。"""
+class XSentinelWebUIController:
+    """注册并实现 X 哨兵订阅管理页面所需的 Web API。"""
 
     def __init__(self, plugin: Any, context: Any):
         self.plugin = plugin
@@ -296,6 +296,8 @@ class TwitterWebUIController:
 
         provider_name = str(getattr(self.plugin, "data_provider", "nitter"))
         return {
+            "migration": getattr(self.plugin, "_migration_report", {"state": "pending"}),
+            "standby": bool(getattr(self.plugin, "_legacy_plugin_active", lambda: False)()),
             "provider": {
                 "name": provider_name,
                 "ready": bool(getattr(self.plugin, "_provider_ready", False)),

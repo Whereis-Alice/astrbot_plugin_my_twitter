@@ -193,17 +193,17 @@ async def test_registers_routes_and_builds_multi_bot_overview(webui_module):
         },
     }
     context = FakeContext([platform_a, platform_b])
-    controller = webui_module.TwitterWebUIController(FakePlugin(subs), context)
+    controller = webui_module.XSentinelWebUIController(FakePlugin(subs), context)
 
     assert len(context.routes) == 7
     assert {route for route, *_rest in context.routes} == {
-        "/astrbot_plugin_twitter/overview",
-        "/astrbot_plugin_twitter/subscriptions/recent",
-        "/astrbot_plugin_twitter/settings/poll-interval",
-        "/astrbot_plugin_twitter/subscriptions/add",
-        "/astrbot_plugin_twitter/subscriptions/update",
-        "/astrbot_plugin_twitter/subscriptions/group-status",
-        "/astrbot_plugin_twitter/subscriptions/remove",
+        "/astrbot_plugin_x_sentinel/overview",
+        "/astrbot_plugin_x_sentinel/subscriptions/recent",
+        "/astrbot_plugin_x_sentinel/settings/poll-interval",
+        "/astrbot_plugin_x_sentinel/subscriptions/add",
+        "/astrbot_plugin_x_sentinel/subscriptions/update",
+        "/astrbot_plugin_x_sentinel/subscriptions/group-status",
+        "/astrbot_plugin_x_sentinel/subscriptions/remove",
     }
 
     payload, status = await controller.overview()
@@ -244,7 +244,7 @@ async def test_group_list_failure_keeps_existing_group_with_fallback_name(
             },
         }
     }
-    controller = webui_module.TwitterWebUIController(
+    controller = webui_module.XSentinelWebUIController(
         FakePlugin(subs),
         FakeContext([platform]),
     )
@@ -264,7 +264,7 @@ async def test_add_subscription_validates_group_and_options(webui_module):
         [{"group_id": "100", "group_name": "Alpha"}],
     )
     plugin = FakePlugin()
-    controller = webui_module.TwitterWebUIController(
+    controller = webui_module.XSentinelWebUIController(
         plugin,
         FakeContext([platform]),
     )
@@ -318,7 +318,7 @@ async def test_add_rechecks_group_membership(
         [{"group_id": "100", "group_name": "Alpha"}],
         error=RuntimeError("offline") if unavailable else None,
     )
-    controller = webui_module.TwitterWebUIController(plugin, FakeContext([platform]))
+    controller = webui_module.XSentinelWebUIController(plugin, FakeContext([platform]))
     webui_module.fake_request.payload = {"umo": umo, "username": "tester"}
 
     payload, status = await controller.add_subscription()
@@ -337,7 +337,7 @@ async def test_add_reports_rejected_subscription(webui_module, reason, expected_
     plugin = FakePlugin()
     plugin.add_result = {"ok": False, "reason": reason}
     platform = FakePlatform("bot-a", [{"group_id": "100", "group_name": "Alpha"}])
-    controller = webui_module.TwitterWebUIController(plugin, FakeContext([platform]))
+    controller = webui_module.XSentinelWebUIController(plugin, FakeContext([platform]))
     webui_module.fake_request.payload = {
         "umo": "bot-a:GroupMessage:100", "username": "tester", "r18": True
     }
@@ -369,7 +369,7 @@ async def test_recent_history_route_respects_subscription_target(
 
     plugin = FakePlugin()
     plugin.subscription_service = types.SimpleNamespace(get_recent_deliveries=get_recent)
-    controller = webui_module.TwitterWebUIController(plugin, FakeContext())
+    controller = webui_module.XSentinelWebUIController(plugin, FakeContext())
     webui_module.fake_request.payload = {"umo": umo, "username": username}
     payload, status = await controller.recent_deliveries()
     assert status == expected
@@ -386,7 +386,7 @@ async def test_recent_history_storage_error_is_not_an_empty_success(webui_module
 
     plugin = FakePlugin()
     plugin.subscription_service = types.SimpleNamespace(get_recent_deliveries=unavailable)
-    controller = webui_module.TwitterWebUIController(plugin, FakeContext())
+    controller = webui_module.XSentinelWebUIController(plugin, FakeContext())
     webui_module.fake_request.payload = {
         "umo": "bot-a:GroupMessage:100", "username": "tester"
     }
@@ -398,7 +398,7 @@ async def test_recent_history_storage_error_is_not_an_empty_success(webui_module
 @pytest.mark.asyncio
 async def test_update_group_status_remove_and_interval_routes(webui_module):
     plugin = FakePlugin()
-    controller = webui_module.TwitterWebUIController(plugin, FakeContext())
+    controller = webui_module.XSentinelWebUIController(plugin, FakeContext())
 
     webui_module.fake_request.payload = {
         "umo": "bot-a:GroupMessage:100",

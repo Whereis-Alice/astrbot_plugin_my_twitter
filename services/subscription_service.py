@@ -2,14 +2,15 @@
 
 import asyncio
 import copy
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
 
-KV_SUBS_KEY = "twitter_subs"
-KV_RETWEET_DEDUP_KEY = "twitter_retweet_dedup_seen"
+KV_SUBS_KEY = "x_sentinel_subs"
+KV_RETWEET_DEDUP_KEY = "x_sentinel_retweet_dedup_seen"
 RETWEET_DEDUP_MAX_ITEMS = 500
 PROCESSED_TWEET_MAX_ITEMS = 500
 RECENT_DELIVERY_MAX_ITEMS = 5
@@ -79,10 +80,13 @@ class SubscriptionService:
     ) -> dict:
         """新增订阅关系，并在可能时复用已有推主数据。"""
         username = str(username or "").strip().lstrip("@")
+        if not re.fullmatch(r"[A-Za-z0-9_]{1,15}", username):
+            return {"ok": False, "reason": "invalid_username"}
         session_config = {
             "status": True,
             "r18": bool(r18),
             "media": bool(media_only),
+            "notify_after": datetime.now(timezone.utc).timestamp(),
         }
 
         async with self._lock:
@@ -192,6 +196,8 @@ class SubscriptionService:
                 "r18": "r18",
                 "media_only": "media",
             }
+            if changes.get("enabled") is True and not subscriber.get("status", True):
+                subscriber["notify_after"] = datetime.now(timezone.utc).timestamp()
             for field, value in changes.items():
                 target = field_map.get(field)
                 if target is not None:
@@ -297,6 +303,8 @@ class SubscriptionService:
             for author in subs.values():
                 subscriber = author.get("subscribers", {}).get(umo)
                 if isinstance(subscriber, dict):
+                    if enabled and not subscriber.get("status", True):
+                        subscriber["notify_after"] = datetime.now(timezone.utc).timestamp()
                     subscriber["status"] = enabled
                     count += 1
             if count:

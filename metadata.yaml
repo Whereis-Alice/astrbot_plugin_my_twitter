@@ -1,8 +1,9 @@
-name: astrbot_plugin_twitter
-display_name: Twitter 推文转发
-desc: 支持 Nitter 与 FxTwitter API 的推特转发插件，提供订阅、定时推送、链接识别和合并转发
-version: v1.12.0
-author: Ars1027
-support_platforms: 
+name: astrbot_plugin_x_sentinel
+display_name: X 哨兵
+desc: X/Twitter 订阅推送，恢复防刷屏、视频与动图、原插件数据继承及可视化管理
+version: v1.0.0
+author: Whereis-Alice
+repo: https://github.com/Whereis-Alice/astrbot_plugin_x_sentinel
+support_platforms:
   - aiocqhttp
-repo: https://github.com/Ars1027/astrbot_plugin_twitter
+astrbot_version: ">=4.16,<5"

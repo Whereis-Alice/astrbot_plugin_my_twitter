@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="X Sentinel: a watchful bird within a radar ring">
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#111f39"/><stop offset="1" stop-color="#080f20"/></linearGradient>
+    <linearGradient id="wing" x2="1" y2="1"><stop stop-color="#77f7d5"/><stop offset="1" stop-color="#1ca1d7"/></linearGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="118" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="166" fill="none" stroke="#253953" stroke-width="2"/>
+  <circle cx="256" cy="256" r="137" fill="none" stroke="#324b64" stroke-width="2"/>
+  <path d="M 118 192 A 152 152 0 0 1 371 141" fill="none" stroke="#76eed2" stroke-width="13" stroke-linecap="round"/>
+  <circle cx="380" cy="151" r="13" fill="#f7c774"/>
+  <path d="M 104 261 L 186 265 L 277 163 Q 300 140 322 163 L 346 191 L 398 210 L 344 234 Q 329 313 247 344 L 186 358 L 216 307 Z" fill="url(#wing)"/>
+  <path d="M 186 265 L 283 216 L 246 288 L 216 307 Z" fill="#dcfff6"/>
+  <path d="M 186 358 L 246 288 L 276 323 Q 230 351 186 358" fill="#1896bb"/>
+  <circle cx="313" cy="197" r="9" fill="#0a1830"/>
+  <path d="M 142 376 A 166 166 0 0 0 389 354" fill="none" stroke="#356175" stroke-width="5" stroke-linecap="round"/>
+</svg>

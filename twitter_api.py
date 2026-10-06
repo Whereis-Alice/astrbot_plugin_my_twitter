@@ -9,7 +9,7 @@ import re
 from collections import OrderedDict
 from datetime import datetime
 from typing import Any, Optional
-from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlsplit, urlunsplit
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -30,6 +30,7 @@ DEFAULT_FXTWITTER_API_BASE = "https://api.fxtwitter.com"
 FXTWITTER_MAX_TIMELINE_PAGES = 4
 FXTWITTER_MAX_TIMELINE_ITEMS = 100
 FXTWITTER_STATUS_CACHE_SIZE = 200
+MEDIA_DOWNLOAD_MAX_BYTES = 20 * 1024 * 1024
 
 NITTER_REQUEST_HEADERS = {
     "User-Agent": (
@@ -45,8 +46,7 @@ NITTER_REQUEST_HEADERS = {
 }
 FXTWITTER_REQUEST_HEADERS = {
     "User-Agent": (
-        "AstrBot-Twitter-Plugin/1.8 "
-        "(+https://github.com/Ars1027/astrbot_plugin_twitter)"
+        "AstrBot-X-Sentinel/1.0"
     ),
     "Accept": "application/json",
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
@@ -252,23 +252,22 @@ class TwitterAPI:
             raise ValueError("empty URL")
 
         client = await self._get_client()
-        if max_bytes is not None:
+        limit = MEDIA_DOWNLOAD_MAX_BYTES if max_bytes is None else max(1, max_bytes)
+        # A read timeout alone does not stop a server that keeps slowly sending data.
+        async with asyncio.timeout(timeout):
             async with client.stream(
                 "GET", url, timeout=timeout, headers={"Accept-Encoding": "identity"}
             ) as resp:
                 resp.raise_for_status()
                 declared_size = resp.headers.get("Content-Length", "")
-                if declared_size.isdigit() and int(declared_size) > max_bytes:
+                if declared_size.isdigit() and int(declared_size) > limit:
                     raise ValueError("媒体文件超过下载大小限制")
                 data = bytearray()
                 async for chunk in resp.aiter_bytes(chunk_size=64 * 1024):
-                    if len(data) + len(chunk) > max_bytes:
+                    if len(data) + len(chunk) > limit:
                         raise ValueError("媒体文件超过下载大小限制")
                     data.extend(chunk)
                 return bytes(data)
-        resp = await client.get(url, timeout=timeout)
-        resp.raise_for_status()
-        return resp.content
 
     async def download_media_to_data_uri(self, url: str) -> str:
         """下载媒体文件并转换为 data URI（base64 内嵌）。
@@ -759,16 +758,18 @@ class TwitterAPI:
             )
 
         if not self.nitter_url:
-            return []
+            raise FxTwitterTimelineError("Nitter 尚未就绪")
 
         client = await self._get_client()
         url = f"{self.nitter_url}/{username}"
         try:
             resp = await client.get(url, timeout=15.0)
             if resp.status_code != 200:
-                return []
+                raise FxTwitterTimelineError(f"Nitter 时间线返回 HTTP {resp.status_code}")
 
             soup = BeautifulSoup(resp.text, "html.parser")
+            if soup.select_one(".timeline") is None:
+                raise FxTwitterTimelineError("Nitter 未返回时间线，可能被限流或要求验证")
             return self._parse_timeline_items(
                 soup,
                 username=username,
@@ -777,7 +778,7 @@ class TwitterAPI:
             )
         except Exception as e:
             logger.error(f"获取用户时间线失败 {username}: {e}")
-            return []
+            raise FxTwitterTimelineError(f"Nitter 时间线请求失败: {e}") from e
 
     def _build_image_url(self, a_href: str, img_src: str) -> str:
         """根据图片质量配置构建图片 URL
@@ -790,9 +791,11 @@ class TwitterAPI:
 
     def _absolute_url(self, url: str) -> str:
         """将 Nitter 相对路径转换为绝对 URL。"""
-        if not url or url.startswith("http"):
-            return url
-        return f"{self.nitter_url}{url}"
+        url = str(url or "").strip()
+        if not url:
+            return ""
+        absolute = urljoin(self.nitter_url.rstrip("/") + "/", url)
+        return absolute if absolute.startswith(("https://", "http://")) else ""
 
     @staticmethod
     def _is_nested_quote_element(tag: Tag, root: Tag) -> bool:
@@ -829,34 +832,24 @@ class TwitterAPI:
     ) -> list[str]:
         """从指定容器提取视频/GIF URL。"""
         videos: list[str] = []
-        video_elems = container.select("div.attachment video")
+        video_elems = container.select("video")
         seen_urls: set[str] = set()
         for video in video_elems:
             if not include_nested_quotes and self._is_nested_quote_element(
                 video, container
             ):
                 continue
-            for source in video.find_all("source"):
-                src = source.get("src", "")
-                if src:
-                    src = self._absolute_url(src)
-                    if src not in seen_urls:
-                        seen_urls.add(src)
-                        videos.append(src)
-
-            src = video.get("src", "")
-            if src:
-                src = self._absolute_url(src)
-                if src not in seen_urls:
-                    seen_urls.add(src)
-                    videos.append(src)
-
-            data_url = video.get("data-url", "")
-            if data_url:
-                data_url = self._absolute_url(data_url)
-                if data_url not in seen_urls:
-                    seen_urls.add(data_url)
-                    videos.append(data_url)
+            candidates = [self._absolute_url(source.get("src", ""))
+                          for source in video.find_all("source")]
+            candidates.extend(self._absolute_url(video.get(key, ""))
+                              for key in ("src", "data-url"))
+            candidates = [url for url in candidates if url]
+            # Sources are alternative encodings of one attachment, not extra videos.
+            direct = [url for url in candidates if not self._is_stream_url(url)]
+            selected = next(iter(direct or candidates), "")
+            if selected and selected not in seen_urls:
+                seen_urls.add(selected)
+                videos.append(selected)
         return videos
 
     def _extract_video_previews(
@@ -865,7 +858,7 @@ class TwitterAPI:
         """提取截图渲染用的视频封面图。"""
         previews: list[dict] = []
         seen_posters: set[str] = set()
-        video_elems = container.select("div.attachment video")
+        video_elems = container.select("video")
         for video in video_elems:
             if not include_nested_quotes and self._is_nested_quote_element(
                 video, container
@@ -1039,17 +1032,24 @@ class TwitterAPI:
         for entry in entries:
             if not isinstance(entry, dict):
                 continue
-            key = str(entry.get("id") or entry.get("url") or "")
-            if not key or key in seen:
+            key = str(entry.get("id") or entry.get("url") or entry.get("transcode_url") or "")
+            if key and key in seen:
                 continue
-            seen.add(key)
+            if key:
+                seen.add(key)
             result.append(entry)
         return result
 
     @staticmethod
+    def _is_stream_url(url: str) -> bool:
+        return any(part in str(url).lower() for part in (".m3u8", ".mpd", "vmap"))
+
+    @staticmethod
     def _select_fxtwitter_video_url(video: dict) -> str:
         """优先选择最高码率 MP4，再回退到媒体 URL、转码或流媒体。"""
-        formats = video.get("formats") or []
+        formats = video.get("formats") or video.get("variants") or []
+        if not isinstance(formats, list):
+            formats = []
         mp4_formats = [
             item
             for item in formats
@@ -1057,31 +1057,32 @@ class TwitterAPI:
             and str(item.get("url") or "").startswith(("http://", "https://"))
             and (
                 str(item.get("container") or "").lower() == "mp4"
+                or str(item.get("content_type") or "").lower() == "video/mp4"
                 or ".mp4" in str(item.get("url") or "").lower()
             )
         ]
         if mp4_formats:
+            def number(value: Any) -> int:
+                try:
+                    return int(value or 0)
+                except (ValueError, TypeError, OverflowError):
+                    return 0
+
             best = max(
                 mp4_formats,
                 key=lambda item: (
-                    int(item.get("bitrate") or 0),
-                    int(item.get("width") or 0) * int(item.get("height") or 0),
+                    number(item.get("bitrate")),
+                    number(item.get("width")) * number(item.get("height")),
                 ),
             )
             return str(best.get("url") or "")
 
-        for key in ("url", "transcode_url"):
-            candidate = str(video.get(key) or "").strip()
-            if candidate.startswith(("http://", "https://")):
-                return candidate
-
-        for item in formats:
-            if not isinstance(item, dict):
-                continue
-            candidate = str(item.get("url") or "").strip()
-            if candidate.startswith(("http://", "https://")):
-                return candidate
-        return ""
+        candidates = [str(video.get(key) or "").strip() for key in ("url", "transcode_url")]
+        candidates.extend(str(item.get("url") or "").strip()
+                          for item in formats if isinstance(item, dict))
+        candidates = [url for url in candidates if url.startswith(("http://", "https://"))]
+        direct = [url for url in candidates if not TwitterAPI._is_stream_url(url)]
+        return next(iter(direct or candidates), "")
 
     def _extract_fxtwitter_media(
         self, status: dict
@@ -1091,20 +1092,14 @@ class TwitterAPI:
             return [], [], []
 
         all_entries = media.get("all") or []
-        photos = media.get("photos") or []
-        videos = media.get("videos") or []
-        if not isinstance(photos, list) or not photos:
-            photos = [
-                item
-                for item in all_entries
-                if isinstance(item, dict) and item.get("type") == "photo"
-            ]
-        if not isinstance(videos, list) or not videos:
-            videos = [
-                item
-                for item in all_entries
-                if isinstance(item, dict) and item.get("type") in ("video", "gif")
-            ]
+        if not isinstance(all_entries, list):
+            all_entries = []
+        photos = list(media.get("photos") or []) if isinstance(media.get("photos"), list) else []
+        videos = list(media.get("videos") or []) if isinstance(media.get("videos"), list) else []
+        photos.extend(item for item in all_entries if isinstance(item, dict)
+                      and item.get("type") in ("photo", "image"))
+        videos.extend(item for item in all_entries if isinstance(item, dict)
+                      and item.get("type") in ("video", "gif", "animated_gif"))
 
         image_urls: list[str] = []
         for photo in self._deduplicate_media_entries(photos):
@@ -1143,6 +1138,35 @@ class TwitterAPI:
             return [], [], []
 
         return image_urls, video_urls, video_previews
+
+    async def _recover_nitter_videos(self, tweet_info: dict) -> None:
+        """仅在 Nitter 未提供可发送视频时，尝试从 FxTwitter 补全 MP4。"""
+        videos = tweet_info.get("videos") or []
+        previews = tweet_info.get("video_previews") or []
+        if not previews and not videos:
+            return
+        direct = [url for url in videos if not self._is_stream_url(url)]
+        if direct and len(direct) >= len(previews):
+            return
+        tweet_id = str(tweet_info.get("tweet_id") or "")
+        username = str(tweet_info.get("username") or "i")
+        if not tweet_id:
+            return
+        try:
+            async with asyncio.timeout(20):
+                payload = await self._request_fxtwitter_json(f"2/status/{tweet_id}", retries=1)
+            status = payload.get("status") if isinstance(payload, dict) else None
+            if isinstance(status, dict):
+                _images, recovered, _previews = self._extract_fxtwitter_media(status)
+                if recovered and (not direct or len(recovered) >= len(videos)):
+                    videos = recovered
+                    tweet_info["videos"] = videos
+        except Exception as exc:
+            logger.debug(f"Nitter 视频补全失败 {tweet_id}: {type(exc).__name__}")
+        if not videos:
+            tweet_info["media_unavailable"] = (
+                f"视频/GIF 暂无可用下载地址，请查看原帖：https://x.com/{username}/status/{tweet_id}"
+            )
 
     def _adapt_fxtwitter_quote(self, status: Any) -> Optional[dict]:
         if not isinstance(status, dict) or status.get("type") != "status":
@@ -1326,7 +1350,7 @@ class TwitterAPI:
                     logger.warning(
                         f"检测到视频附件但未提取到视频URL，"
                         f"可能 Nitter 实例({self.nitter_url})禁用了视频播放。"
-                        f"请在 Nitter 配置中设置 hlsPlayback = true 且 proxyVideo = false"
+                        "将尝试补全媒体地址，仍不可用时提供原帖链接。"
                     )
 
             # 获取引用推文（仅主贴）
@@ -1388,6 +1412,9 @@ class TwitterAPI:
             # 检测 R18 标记（仅主贴）
             r18_elem = main_tweet.select_one(".nsfw")
             result["is_r18"] = r18_elem is not None
+            await self._recover_nitter_videos(result)
+            if result.get("quote"):
+                await self._recover_nitter_videos(result["quote"])
 
         except Exception as e:
             logger.error(f"获取推文详情失败 {username}/{tweet_id}: {e}")

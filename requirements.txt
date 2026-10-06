@@ -1,2 +1,2 @@
-httpx[http2]>=0.25.0
+httpx[http2,socks]>=0.25.0
 beautifulsoup4>=4.12.0
