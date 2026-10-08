@@ -111,20 +111,31 @@ async def test_startup_and_reload_only_sync_latest(harness):
 
 
 @pytest.mark.asyncio
-async def test_protected_account_is_skipped_without_resync(harness):
+async def test_protected_account_recovery_syncs_without_marking_mirror_failed(harness):
     h = harness
     assert await h.check()
     assert "tester" in h.polling._synchronized
+    h.polling._synchronized.add("other")
 
     h.api.protected = True
-    assert await h.check()
-    assert "tester" in h.polling._synchronized
-    assert h.sent == []
+    for tweet_id in ("101", "102", "103"):
+        h.api.ids.append(tweet_id)
+        assert await h.check()
+        assert h.polling._synchronized == {"other"}
+        assert h.store["my_twitter_subs"]["tester"]["since_id"] == "100"
+        assert h.sent == []
 
     h.api.protected = False
-    h.api.ids = ["100", "101"]
     assert await h.check()
-    assert h.sent == ["101"]
+    assert h.store["my_twitter_subs"]["tester"]["since_id"] == "103"
+    assert h.polling._synchronized == {"tester", "other"}
+    assert h.sent == []
+
+    h.api.ids.append("104")
+    assert await h.check()
+    assert h.sent == ["104"]
+    assert h.store["my_twitter_subs"]["tester"]["since_id"] == "104"
+    assert "other" in h.polling._synchronized
 
 
 @pytest.mark.asyncio

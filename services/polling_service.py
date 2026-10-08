@@ -205,7 +205,8 @@ class PollingService:
                     self._pending_collective_cursors[key] = tweet_id
             return True
         except NitterProtectedAccountError as exc:
-            # 受保护账号没有公开时间线，不应被当作 Nitter 故障触发恢复同步。
+            # 只同步受限账号的恢复位置，不把账号限制计入 Nitter 镜像故障。
+            self.require_resync(username)
             logger.info(f"@{username} 暂不可见，跳过本轮检查: {exc}")
             return True
         except Exception as exc:

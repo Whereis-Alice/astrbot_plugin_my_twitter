@@ -46,7 +46,7 @@ NITTER_REQUEST_HEADERS = {
 }
 FXTWITTER_REQUEST_HEADERS = {
     "User-Agent": (
-        "AstrBot-My-Twitter/1.0.1"
+        "AstrBot-My-Twitter/1.0.3"
     ),
     "Accept": "application/json",
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
@@ -793,7 +793,7 @@ class TwitterAPI:
             soup = BeautifulSoup(resp.text, "html.parser")
             if soup.select_one(".timeline-protected") is not None:
                 raise NitterProtectedAccountError(
-                    f"@{username} 的账号受保护，Nitter 不提供公开时间线"
+                    f"Nitter 将 @{username} 标记为受保护，当前无法读取时间线"
                 )
             if soup.select_one(".timeline") is None:
                 raise FxTwitterTimelineError("Nitter 未返回时间线，可能被限流或要求验证")
