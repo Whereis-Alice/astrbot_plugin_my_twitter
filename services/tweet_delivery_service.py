@@ -10,6 +10,7 @@ from astrbot.api.event import MessageChain
 import astrbot.api.message_components as Comp
 from astrbot.api.message_components import Node, Nodes
 
+from .content_filter_service import TweetContentFilter
 from .subscription_service import RecentDelivery, SubscriptionService
 from .tweet_message_service import TranslationCycleState, TweetMessageService
 
@@ -88,11 +89,14 @@ class TweetDeliveryService:
         subscriptions: SubscriptionService,
         messages: TweetMessageService,
         settings: TweetDeliverySettings,
+        *,
+        content_filter: TweetContentFilter | None = None,
     ) -> None:
         self.context = context
         self.subscriptions = subscriptions
         self.messages = messages
         self.settings = settings
+        self.content_filter = content_filter or TweetContentFilter()
         self._collected_tweets: dict[str, list[CachedTweet]] = {}
         self._pending_retweet_seen: dict[str, set[str]] = {}
         self._cycle_deliveries: dict[str, int] | None = None
@@ -371,6 +375,9 @@ class TweetDeliveryService:
         cycle: TranslationCycleState | None = None,
     ) -> DeliveryResult:
         """推送或加入集体缓存；返回实际成功的摘要，不单独写历史 KV。"""
+        if self.content_filter.match(tweet_info) is not None:
+            logger.debug(f"跳过命中全局屏蔽词的推文: @{username} / {tweet_info.get('tweet_id', '')}")
+            return DeliveryResult(DeliveryState.SKIPPED)
         latest_subs = await self.subscriptions.get_all()
         if username not in latest_subs:
             return DeliveryResult(DeliveryState.SKIPPED)
@@ -536,7 +543,8 @@ class TweetDeliveryService:
                 translate_model=translate_model,
             )
             if not chain:
-                return True
+                logger.warning(f"推文消息为空，未发送至 {umo}: @{username}")
+                return False
             message_settings = getattr(self.messages, "settings", None)
             required_image = (
                 chain[0] if isinstance(chain[0], Comp.Image)
@@ -710,7 +718,10 @@ class TweetDeliveryService:
                                 translate_model=cached_tweet.translate_model,
                             )
                             if not chain:
-                                record_result(umo, cached_tweet, True)
+                                logger.warning(
+                                    f"集体转发推文消息为空: {umo} -> @{cached_tweet.username}"
+                                )
+                                record_result(umo, cached_tweet, False)
                                 continue
                             tweet_nodes, tweet_videos = (
                                 self.split_chain_for_nodes(

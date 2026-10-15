@@ -27,6 +27,7 @@ from .services import (
     TweetMessageSettings,
 )
 from .services.avatar_cache_service import AvatarCacheService
+from .services.content_filter_service import TweetContentFilter
 from .services.migration_service import (
     LEGACY_PLUGIN_ID, PREVIOUS_PLUGIN_ID, MIGRATION_KEY, MigrationService,
     import_legacy_config, import_previous_config,
@@ -228,6 +229,10 @@ class MyTwitterPlugin(Star):
                 False,
             )
         )
+        self.content_filter = TweetContentFilter(
+            self._cfg("content_filter", "twitter_blocked_keywords", []),
+            str(self._cfg("content_filter", "twitter_keyword_match_mode", "contains")).strip().lower(),
+        )
         self.include_tweet_link = bool(
             self._cfg(
                 "message_format",
@@ -405,6 +410,7 @@ class MyTwitterPlugin(Star):
                 deduplicate_retweets=self.deduplicate_retweets,
                 max_tweets_per_session=max(1, int(self._cfg("delivery_guard", "max_tweets_per_session", 3))),
             ),
+            content_filter=self.content_filter,
         )
         self.polling_service = PollingService(
             self.twitter_api,
@@ -417,6 +423,7 @@ class MyTwitterPlugin(Star):
                 website_list=tuple(self.website_list),
                 max_tweets_per_user=self.poll_max_tweets_per_user,
             ),
+            content_filter=self.content_filter,
         )
 
         self._webui_controller = None
@@ -1084,6 +1091,13 @@ class MyTwitterPlugin(Star):
             )
             return
         self._attach_timeline_item_metadata(tweet_info, selected_item)
+
+        blocked_keyword = self.content_filter.match(tweet_info)
+        if blocked_keyword is not None:
+            yield event.plain_result(
+                f"@{username} 的最新推文命中全局屏蔽词「{blocked_keyword}」，已跳过推送"
+            )
+            return
 
         translated_text, translate_model = (
             await self.message_service.maybe_translate(tweet_info, umo)

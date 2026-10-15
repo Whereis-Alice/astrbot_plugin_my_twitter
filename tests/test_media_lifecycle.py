@@ -234,6 +234,12 @@ async def test_recent_history_records_only_actual_session_success(
     assert [(item.umo, item.username, item.record["tweet_id"]) for item in result.recent_deliveries] == (
         [] if mode in {"failure", "empty"} else [("good", "tester", "123")]
     )
+    if mode == "empty":
+        if collective:
+            assert result.failed_authors == frozenset({"tester"})
+            assert result.successful_authors == frozenset()
+        else:
+            assert result.state is contract.DeliveryState.FAILED
     # A recording failure must not turn a successful send into a failed send.
     if mode == "history_error":
         assert await delivery.send_to_subscriber("good", "tester", {}, {}, "Tester")
@@ -665,6 +671,134 @@ async def test_text_layout_keeps_retweet_quote_and_translation_paragraphs(
         "https://x.com/author/status/123\n\n"
         "（由 model 翻译自原文）"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("no_text", [False, True])
+@pytest.mark.parametrize("media_location", ["main", "quote", "none"])
+@pytest.mark.parametrize("translated", [False, True])
+async def test_no_text_hides_main_and_quote_bodies_together(
+    plugin_module, no_text, media_location, translated
+):
+    service = plugin_module.TweetMessageService(
+        object(), object(), None,
+        _message_settings(
+            plugin_module, text_render_mode="text", no_text=no_text,
+            pre_download_media=False, proxy=None,
+        ),
+    )
+    quote = {"username": "quoted", "text": "引用原文"}
+    tweet = {"username": "tester", "text": "正文原文", "quote": quote}
+    if translated:
+        quote["translated_text"] = "引用译文"
+    if media_location != "none":
+        (tweet if media_location == "main" else quote)["images"] = [
+            "https://example.com/image.jpg"
+        ]
+
+    chain = await service.build_message_chain(
+        "tester", tweet, translated_text="正文译文" if translated else None
+    )
+
+    text = "\n".join(item.text for item in chain if isinstance(item, Plain))
+    visible = not (no_text and media_location != "none")
+    assert (("正文译文" if translated else "正文原文") in text) is visible
+    assert (("引用译文" if translated else "引用原文") in text) is visible
+    assert "@tester" in text and "@quoted" in text
+    assert sum(isinstance(item, Image) for item in chain) == (media_location != "none")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("transport", ["plain", "node", "collective"])
+@pytest.mark.parametrize("render_mode", ["text", "screenshot"])
+@pytest.mark.parametrize("media_mode", ["image", "video", "disabled"])
+async def test_no_text_delivery_records_only_actual_output(
+    plugin_module, transport, render_mode, media_mode
+):
+    sent = []
+    saved_seen = []
+
+    class Subscriptions:
+        async def get_all(self):
+            return {"tester": {"subscribers": {"session": {"status": True}}}}
+
+        async def get_retweet_seen(self):
+            return {}
+
+        async def save_retweet_seen(self, data):
+            saved_seen.append(data)
+
+        retweet_seen_by_umo = staticmethod(
+            plugin_module.SubscriptionService.retweet_seen_by_umo
+        )
+        mark_retweet_seen = staticmethod(
+            plugin_module.SubscriptionService.mark_retweet_seen
+        )
+
+    async def send(_umo, message):
+        sent.extend(message.chain)
+
+    async def get_size(_url):
+        return 1024
+
+    async def html_render(*_args, **_kwargs):
+        raise AssertionError("含媒体且隐藏正文时不应渲染截图")
+
+    messages = plugin_module.TweetMessageService(
+        object(), types.SimpleNamespace(get_remote_file_size=get_size), html_render,
+        _message_settings(
+            plugin_module, text_render_mode=render_mode, no_text=True,
+            send_media_separately=media_mode != "disabled",
+            include_tweet_link=False, pre_download_media=False, proxy=None,
+        ),
+    )
+    collective = transport == "collective"
+    delivery = plugin_module.TweetDeliveryService(
+        types.SimpleNamespace(send_message=send), Subscriptions(), messages,
+        _delivery_settings(
+            plugin_module, use_node=transport != "plain", collective_forward=collective,
+            deduplicate_retweets=True,
+        ),
+    )
+    tweet = {
+        "tweet_id": "123", "username": "original", "text": "正文原文",
+        "quote": {"username": "quoted", "text": "引用原文"},
+        "retweet": {"retweeter_username": "tester"},
+        "videos" if media_mode == "video" else "images": [
+            "https://example.com/video.mp4" if media_mode == "video"
+            else "https://example.com/image.jpg"
+        ],
+    }
+
+    result = await delivery.push_to_subscribers("tester", tweet)
+    contract = _delivery_contract(plugin_module)
+    should_deliver = render_mode == "text" or media_mode != "disabled"
+    if collective:
+        assert result.state is contract.DeliveryState.QUEUED
+        result = await delivery.flush_collected()
+        assert ("tester" in result.successful_authors) is should_deliver
+        assert ("tester" in result.failed_authors) is not should_deliver
+        assert not delivery.has_collected
+        assert (await delivery.flush_collected()).recent_deliveries == ()
+    else:
+        expected = contract.DeliveryState.DELIVERED if should_deliver else contract.DeliveryState.FAILED
+        assert result.state is expected
+
+    assert bool(sent) is should_deliver
+    assert len(result.recent_deliveries) == int(should_deliver)
+    assert saved_seen == ([{"session": ["123"]}] if should_deliver else [])
+    components = [
+        part for item in sent
+        for part in (
+            [part for node in item.nodes for part in node.content]
+            if isinstance(item, Nodes) else [item]
+        )
+    ]
+    assert all("正文原文" not in item.text and "引用原文" not in item.text
+               for item in components if isinstance(item, Plain))
+    if media_mode != "disabled":
+        media_type = Video if media_mode == "video" else Image
+        assert any(isinstance(item, media_type) for item in components)
 
 
 @pytest.mark.asyncio

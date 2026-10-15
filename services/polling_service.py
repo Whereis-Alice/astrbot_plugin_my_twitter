@@ -2,7 +2,7 @@
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from astrbot.api import logger
 
@@ -16,6 +16,9 @@ except ImportError:  # 兼容旧版测试夹具和未提供该分类的外部数
 from .subscription_service import RecentDelivery, SubscriptionService
 from .tweet_delivery_service import DeliveryResult, DeliveryState, TweetDeliveryService
 from .tweet_message_service import TranslationCycleState
+
+if TYPE_CHECKING:
+    from .content_filter_service import TweetContentFilter
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,11 +39,14 @@ class PollingService:
         subscriptions: SubscriptionService,
         delivery: TweetDeliveryService,
         settings: PollingSettings,
+        *,
+        content_filter: "TweetContentFilter | None" = None,
     ) -> None:
         self.twitter_api = twitter_api
         self.subscriptions = subscriptions
         self.delivery = delivery
         self.settings = settings
+        self.content_filter = content_filter
         self._synchronized: set[str] = set()
         self._pending_collective_cursors: dict[str, str] = {}
         self._pending_collective_tweet_ids: dict[str, list[str]] = {}
@@ -171,6 +177,10 @@ class PollingService:
                 consumed_ids = [str(item["tweet_id"]) for item in items]
                 if not await self.subscriptions.commit_processed_tweets(key, consumed_ids, consumed_ids[-1]):
                     return False
+            elif since_int < 0:
+                # 空时间线也完成首次同步，之后发布的第一条应作为新动态处理。
+                if not await self.subscriptions.commit_processed_tweets(key, [], "0"):
+                    return False
             self._synchronized.add(key.casefold())
             if not synchronized:
                 logger.info(f"@{key} 已同步最新位置，本轮不补发历史推文")
@@ -180,13 +190,39 @@ class PollingService:
                         if self.settings.include_retweets or not item.get("is_retweet")]
             max_tweets = max(1, int(self.settings.max_tweets_per_user))
             selected = eligible[-max_tweets:]
-            skipped = len(eligible) - len(selected)
+            prepared: dict[str, dict] = {}
+            blocked = 0
+            if self.content_filter is not None and self.content_filter.enabled:
+                # 在已消费的有界窗口中优先检查最新内容，屏蔽项不占推主额度。
+                selected = []
+                for item in reversed(eligible):
+                    tweet_id = str(item["tweet_id"])
+                    tweet_info = await self.twitter_api.get_tweet(
+                        str(item.get("username") or key), tweet_id,
+                    )
+                    if not isinstance(tweet_info, dict) or not tweet_info.get("status", True):
+                        self.require_resync(key)
+                        logger.warning(f"@{key} 推文 {tweet_id} 详情失败，本批次不补发")
+                        return False
+                    self.attach_timeline_item_metadata(tweet_info, item)
+                    if self.content_filter.match(tweet_info) is not None:
+                        blocked += 1
+                        logger.debug(f"@{key} 推文 {tweet_id} 命中全局屏蔽词，跳过推送")
+                        continue
+                    selected.append(item)
+                    prepared[tweet_id] = tweet_info
+                    if len(selected) >= max_tweets:
+                        break
+                selected.reverse()
+            skipped = len(eligible) - len(selected) - blocked
             if skipped:
                 logger.info(f"@{key} 跳过 {skipped} 条过量推文，仅尝试最新 {len(selected)} 条")
 
             for item in selected:
                 tweet_id = str(item["tweet_id"])
-                tweet_info = await self.twitter_api.get_tweet(str(item.get("username") or key), tweet_id)
+                tweet_info = prepared.get(tweet_id)
+                if tweet_info is None:
+                    tweet_info = await self.twitter_api.get_tweet(str(item.get("username") or key), tweet_id)
                 if not isinstance(tweet_info, dict) or not tweet_info.get("status", True):
                     self.require_resync(key)
                     logger.warning(f"@{key} 推文 {tweet_id} 详情失败，本批次不补发")

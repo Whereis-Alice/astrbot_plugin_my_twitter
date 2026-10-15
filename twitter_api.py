@@ -1215,6 +1215,7 @@ class TwitterAPI:
             "images": images,
             "videos": videos,
             "video_previews": previews,
+            "is_r18": bool(status.get("possibly_sensitive")),
         }
 
     def _adapt_fxtwitter_status(
@@ -1227,6 +1228,7 @@ class TwitterAPI:
         tweet_id = str(status.get("id") or fallback_id)
         result = self._empty_tweet_result(username, tweet_id)
         images, videos, previews = self._extract_fxtwitter_media(status)
+        quote_info = self._adapt_fxtwitter_quote(status.get("quote"))
         reposted_by = status.get("reposted_by") or {}
         retweet = None
         if isinstance(reposted_by, dict) and (
@@ -1265,9 +1267,12 @@ class TwitterAPI:
                 "images": images,
                 "videos": videos,
                 "video_previews": previews,
-                "quote": self._adapt_fxtwitter_quote(status.get("quote")),
+                "quote": quote_info,
                 "retweet": retweet,
-                "is_r18": bool(status.get("possibly_sensitive")),
+                "is_r18": bool(
+                    status.get("possibly_sensitive")
+                    or (quote_info or {}).get("is_r18")
+                ),
                 "url": str(status.get("url") or result["url"]),
                 "replying_to": (
                     status.get("replying_to")

@@ -268,6 +268,35 @@ def test_adapts_retweet_quote_sensitive_and_missing_fields(api_module):
     assert missing["quote"] is None
 
 
+@pytest.mark.parametrize(
+    "main_sensitive,quote_sensitive,expected",
+    [
+        (False, True, True),
+        (True, False, True),
+        (True, True, True),
+        (False, False, False),
+        (False, None, False),
+    ],
+)
+def test_quote_sensitive_media_contributes_to_subscription_filter(
+    api_module, main_sensitive, quote_sensitive, expected
+):
+    api = api_module.TwitterAPI(provider="fxtwitter")
+    status = _fixture("fxtwitter_quote_status.json")
+    status["possibly_sensitive"] = main_sensitive
+    if quote_sensitive is not None:
+        status["quote"]["possibly_sensitive"] = quote_sensitive
+
+    tweet = api._adapt_fxtwitter_status(status)
+
+    # The delivery service filters the complete message using this top-level flag.
+    assert tweet["is_r18"] is expected
+    assert tweet["quote"]["is_r18"] is bool(quote_sensitive)
+    assert tweet["quote"]["images"] == [
+        "https://pbs.twimg.com/media/quoted.jpg?name=orig"
+    ]
+
+
 @pytest.mark.asyncio
 async def test_timeline_cursor_since_id_order_dedup_and_cache(api_module):
     api = api_module.TwitterAPI(

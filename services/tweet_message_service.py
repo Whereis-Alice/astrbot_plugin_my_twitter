@@ -466,7 +466,7 @@ class TweetMessageService:
                 quote_author,
             )
             append_text_section(f"{nickname} 引用了 {quote_display} 的帖子")
-            if quote_text:
+            if not (self.settings.no_text and has_media) and quote_text:
                 append_text_section(quote_text)
 
         if tweet_id and self.settings.include_tweet_link:

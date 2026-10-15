@@ -132,8 +132,22 @@
   "content_filter": {
     "description": "内容过滤",
     "type": "object",
-    "hint": "控制转帖推送、链接识别等内容策略。",
+    "hint": "控制全局屏蔽词、转帖推送、链接识别等内容策略。",
     "items": {
+      "twitter_blocked_keywords": {
+        "description": "全局推送屏蔽词",
+        "type": "list",
+        "default": [],
+        "hint": "每项一个词，如 oc；忽略大小写及全角/半角，正文或引用原文命中任一词就跳过。适用于所有订阅和推特测试，链接解析不受影响；留空关闭，保存并重载后生效。"
+      },
+      "twitter_keyword_match_mode": {
+        "description": "屏蔽词匹配方式",
+        "type": "string",
+        "default": "contains",
+        "options": ["contains", "word"],
+        "labels": ["包含匹配", "整词匹配"],
+        "hint": "包含匹配：任意位置出现即屏蔽。整词匹配：词前后不能紧邻字母、数字、下划线或汉字；oc 可命中 OC、#OC，但不会命中 social、OC设定。两种方式均按字面量匹配，不支持正则。"
+      },
       "twitter_include_retweets": {
         "description": "轮询推送和推特测试时推送转帖",
         "type": "bool",

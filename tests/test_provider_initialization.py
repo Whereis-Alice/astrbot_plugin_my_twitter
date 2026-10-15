@@ -868,6 +868,7 @@ async def test_test_command_and_link_recognition_share_prepared_delivery(
     plugin_module,
 ):
     plugin = plugin_module.MyTwitterPlugin.__new__(plugin_module.MyTwitterPlugin)
+    plugin.content_filter = plugin_module.TweetContentFilter()
     plugin._provider_ready = True
     plugin.include_retweets = True
     plugin.link_recognition_mode = plugin_module.LINK_RECOGNITION_MODE_AUTO
